@@ -1,0 +1,58 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #f9fafb;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+/* ============================================
+   ESTILOS PARA IMPRESIÓN DE COMPROBANTES
+   ============================================ */
+@media print {
+  /* Ocultar todo excepto el comprobante */
+  body * {
+    visibility: hidden;
+  }
+  
+  /* Hacer visible solo el contenido del comprobante */
+  #invoice-content,
+  #invoice-content * {
+    visibility: visible;
+  }
+  
+  #invoice-content {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    background: white;
+    padding: 20px;
+  }
+  
+  /* Ocultar botones y elementos interactivos */
+  .no-print {
+    display: none !important;
+  }
+  
+  /* Ajustar colores para impresión */
+  @page {
+    margin: 1cm;
+  }
+}
