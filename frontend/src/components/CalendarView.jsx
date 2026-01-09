@@ -54,17 +54,18 @@ function CalendarView() {
     const date = new Date(dateStr + 'T00:00:00');
     return date.toLocaleDateString('es-ES', {
       weekday: 'long',
-      year: 'numeric',
-      month: 'long',
       day: 'numeric',
+      month: 'long',
+      year: 'numeric',
     });
   };
 
-  // Formatear fecha corta (DD/MM)
+  // Formatear fecha corta (DD/MM/YYYY)
   const formatDateShort = (dateString) => {
     if (!dateString) return '';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' });
+    // Agregar T00:00:00 para evitar problemas de zona horaria
+    const date = new Date(dateString + 'T00:00:00');
+    return date.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
   };
 
   return (
@@ -86,12 +87,21 @@ function CalendarView() {
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Selecciona una Fecha
             </label>
-            <input
-              type="date"
-              value={fecha}
-              onChange={(e) => setFecha(e.target.value)}
-              className="px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-medium text-lg"
-            />
+            <div className="flex gap-2">
+              <input
+                type="date"
+                value={fecha}
+                onChange={(e) => setFecha(e.target.value)}
+                className="px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-medium text-lg"
+              />
+              <button
+                onClick={loadDisponibilidad}
+                className="px-4 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-medium"
+                title="Recargar"
+              >
+                🔄
+              </button>
+            </div>
           </div>
         </div>
 

@@ -4,11 +4,11 @@ Arquitectura: SQLAlchemy + SQLite
 Regla crítica: El precio se guarda en la reserva, no solo en la habitación
 """
 
-from sqlalchemy import create_engine, Column, Integer, String, Float, Date, Enum, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, Float, Date, DateTime, Enum, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from enum import Enum as PyEnum
-from datetime import date
+from datetime import date, datetime
 
 Base = declarative_base()
 
@@ -22,8 +22,9 @@ class TipoHabitacion(PyEnum):
     SUITE = "SUITE"
 
 class EstadoHabitacion(PyEnum):
-    LIMPIEZA = "LIMPIEZA"
     DISPONIBLE = "DISPONIBLE"
+    OCUPADA = "OCUPADA"
+    LIMPIEZA = "LIMPIEZA"
     MANTENIMIENTO = "MANTENIMIENTO"
 
 class EstadoReserva(PyEnum):
@@ -85,6 +86,8 @@ class Reserva(Base):
     fecha_salida = Column(Date, nullable=False)
     precio_total = Column(Float, nullable=False)  # ⚠️ CRÍTICO: Se calcula al crear la reserva
     estado = Column(Enum(EstadoReserva), nullable=False, default=EstadoReserva.PENDIENTE)
+    checkin_timestamp = Column(DateTime, nullable=True)  # Hora exacta del check-in
+    checkout_timestamp = Column(DateTime, nullable=True)  # Hora exacta del check-out
     
     # Relaciones
     habitacion = relationship("Habitacion", back_populates="reservas")

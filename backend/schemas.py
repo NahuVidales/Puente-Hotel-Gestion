@@ -52,15 +52,26 @@ class HabitacionDetalle(HabitacionResponse):
 class ClienteBase(BaseModel):
     dni: str = Field(..., min_length=5, max_length=20, description="DNI/Pasaporte único")
     nombre_completo: str = Field(..., min_length=3, max_length=100, description="Nombre completo")
-    email: str = Field(..., description="Email del cliente")
-    telefono: Optional[str] = Field(None, max_length=20, description="Teléfono de contacto")
+    email: Optional[str] = Field(None, description="Email del cliente (opcional)")
+    telefono: str = Field(..., max_length=20, description="Teléfono de contacto (obligatorio)")
 
 class ClienteCreate(ClienteBase):
     pass
 
-class ClienteResponse(ClienteBase):
+class ClienteUpdate(BaseModel):
+    """Schema para actualizar datos del cliente durante check-in"""
+    nombre_completo: Optional[str] = Field(None, min_length=3, max_length=100)
+    email: Optional[str] = Field(None)
+    telefono: Optional[str] = Field(None, max_length=20)
+
+class ClienteResponse(BaseModel):
+    """Schema de respuesta - telefono opcional para clientes antiguos sin teléfono"""
     model_config = ConfigDict(from_attributes=True)
     id: int
+    dni: str
+    nombre_completo: str
+    email: Optional[str] = None
+    telefono: Optional[str] = None
 
 # ============================================================================
 # RESERVA SCHEMAS
@@ -82,11 +93,30 @@ class ReservaCreate(ReservaBase):
 class ReservaUpdate(BaseModel):
     estado: Optional[str] = None
 
+# Schema embebido para cliente en respuesta de reserva
+class ClienteEmbedded(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    dni: str
+    nombre_completo: str
+    email: Optional[str] = None
+    telefono: Optional[str] = None  # Opcional en respuesta para clientes antiguos
+
+# Schema embebido para habitación en respuesta de reserva
+class HabitacionEmbedded(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    numero: str
+    tipo: str
+    precio_base: float
+
 class ReservaResponse(ReservaBase):
     model_config = ConfigDict(from_attributes=True)
     id: int
     precio_total: float = Field(..., description="Precio total calculado")
     estado: str = Field(..., description="Estado de la reserva")
+    cliente: Optional[ClienteEmbedded] = None
+    habitacion: Optional[HabitacionEmbedded] = None
 
 # Respuesta extendida con datos de cliente y habitación para historial
 class ReservaHistorialResponse(BaseModel):

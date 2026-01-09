@@ -22,6 +22,7 @@ function BookingModal({ isOpen, onClose, room, onSuccess }) {
     nombre_completo: '',
     dni: '',
     email: '',
+    telefono: '',
   });
 
   // Cargar clientes al abrir el modal
@@ -88,8 +89,8 @@ function BookingModal({ isOpen, onClose, room, onSuccess }) {
 
       // Caso 1: Crear nuevo cliente
       if (isNewClient) {
-        if (!newClientData.nombre_completo || !newClientData.dni || !newClientData.email) {
-          setError('Por favor completa todos los datos del cliente');
+        if (!newClientData.nombre_completo || !newClientData.dni || !newClientData.telefono) {
+          setError('Por favor completa: Nombre, DNI y Teléfono');
           setLoading(false);
           return;
         }
@@ -125,7 +126,7 @@ function BookingModal({ isOpen, onClose, room, onSuccess }) {
         `✅ ¡Reserva Exitosa!\n\nID: ${response.data.id}\nTotal: $${response.data.precio_total.toFixed(2)}`
       );
       setFormData({ cliente_id: '', fecha_entrada: '', fecha_salida: '' });
-      setNewClientData({ nombre_completo: '', dni: '', email: '' });
+      setNewClientData({ nombre_completo: '', dni: '', email: '', telefono: '' });
       setIsNewClient(false);
       onSuccess();
       onClose();
@@ -256,6 +257,19 @@ function BookingModal({ isOpen, onClose, room, onSuccess }) {
                     value={newClientData.email}
                     onChange={handleNewClientChange}
                     placeholder="Ej: juan@example.com"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Teléfono
+                  </label>
+                  <input
+                    type="tel"
+                    name="telefono"
+                    value={newClientData.telefono}
+                    onChange={handleNewClientChange}
+                    placeholder="Ej: +54 9 11 1234-5678"
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                   />
                 </div>

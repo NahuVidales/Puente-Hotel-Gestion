@@ -3,7 +3,7 @@ Puente Hotel - API REST con FastAPI
 Endpoints para gestionar habitaciones, clientes y reservas
 """
 
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -76,8 +76,12 @@ def crear_habitacion(habitacion: schemas.HabitacionCreate, db: Session = Depends
 def listar_habitaciones(db: Session = Depends(get_db)):
     """
     GET /habitaciones
-    Retorna lista de todas las habitaciones con información de reservas activas
+    Retorna lista de todas las habitaciones con información de reservas activas.
+    Antes de listar, actualiza automáticamente las reservas vencidas.
     """
+    # Actualizar reservas vencidas automáticamente
+    crud.actualizar_reservas_vencidas(db)
+    
     return crud.get_habitaciones(db)
 
 @app.get("/habitaciones/{habitacion_id}", response_model=schemas.HabitacionResponse)
@@ -303,8 +307,12 @@ def listar_reservas(
 ):
     """
     GET /reservas
-    Lista todas las reservas, opcionalmente filtrando por rango de fechas o cliente
+    Lista todas las reservas, opcionalmente filtrando por rango de fechas o cliente.
+    Antes de listar, actualiza automáticamente las reservas vencidas.
     """
+    # Actualizar reservas vencidas automáticamente
+    crud.actualizar_reservas_vencidas(db)
+    
     return crud.get_reservas(
         db,
         fecha_inicio=fecha_inicio,
@@ -317,8 +325,12 @@ def listar_reservas(
 def obtener_historial(db: Session = Depends(get_db)):
     """
     GET /reservas/historial
-    Obtiene reservas finalizadas o canceladas
+    Obtiene reservas finalizadas o canceladas.
+    Antes de listar, actualiza automáticamente las reservas vencidas.
     """
+    # Actualizar reservas vencidas automáticamente
+    crud.actualizar_reservas_vencidas(db)
+    
     return crud.get_reservas_historial(db)
 
 @app.get("/reservas/{reserva_id}", response_model=schemas.ReservaResponse)
@@ -343,6 +355,17 @@ def eliminar_reserva(reserva_id: int, db: Session = Depends(get_db)):
         return {"mensaje": "Reserva eliminada correctamente"}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+@app.put("/reservas/{reserva_id}/cancelar")
+def cancelar_reserva(reserva_id: int, db: Session = Depends(get_db)):
+    """
+    PUT /reservas/{reserva_id}/cancelar
+    Cancela una reserva (cambia estado a CANCELADA, no la elimina)
+    """
+    resultado = crud.cancelar_reserva(db, reserva_id)
+    if not resultado:
+        raise HTTPException(status_code=404, detail="Reserva no encontrada o no se puede cancelar")
+    return resultado
 
 @app.put("/reservas/{reserva_id}/checkout")
 def checkout_reserva(reserva_id: int, db: Session = Depends(get_db)):
@@ -549,6 +572,73 @@ def obtener_cuenta(reserva_id: int, db: Session = Depends(get_db)):
     if not cuenta:
         raise HTTPException(status_code=404, detail="Reserva no encontrada")
     return cuenta
+
+# ============================================================================
+# ENDPOINTS: CHECK-IN
+# ============================================================================
+
+@app.get("/checkin/llegadas-hoy")
+def obtener_llegadas_hoy(db: Session = Depends(get_db)):
+    """
+    GET /checkin/llegadas-hoy
+    Obtiene todas las reservas con llegada programada para hoy que están PENDIENTES
+    """
+    return crud.get_llegadas_hoy(db)
+
+@app.get("/checkin/buscar")
+def buscar_para_checkin(
+    q: str = None,
+    db: Session = Depends(get_db)
+):
+    """
+    GET /checkin/buscar?q=texto
+    Busca reservas PENDIENTES por apellido, DNI o ID de reserva
+    """
+    if not q or len(q) < 2:
+        return []
+    return crud.buscar_reservas_checkin(db, q)
+
+@app.post("/checkin/{reserva_id}")
+def realizar_checkin(
+    reserva_id: int,
+    datos_cliente: schemas.ClienteUpdate = Body(default=None),
+    db: Session = Depends(get_db)
+):
+    """
+    POST /checkin/{reserva_id}
+    Realiza el check-in de una reserva:
+    1. Actualiza datos del cliente si se proporcionan
+    2. Cambia estado de reserva a CHECKIN
+    3. Cambia estado de habitación a OCUPADA
+    4. Registra el timestamp del check-in
+    """
+    resultado = crud.realizar_checkin(db, reserva_id, datos_cliente)
+    if not resultado:
+        raise HTTPException(status_code=404, detail="Reserva no encontrada o no está en estado PENDIENTE")
+    return resultado
+
+@app.get("/checkin/habitaciones-disponibles")
+def obtener_habitaciones_disponibles_checkin(db: Session = Depends(get_db)):
+    """
+    GET /checkin/habitaciones-disponibles
+    Obtiene habitaciones disponibles y limpias para reasignación durante check-in
+    """
+    return crud.get_habitaciones_disponibles_checkin(db)
+
+@app.put("/checkin/{reserva_id}/cambiar-habitacion/{nueva_habitacion_id}")
+def cambiar_habitacion_checkin(
+    reserva_id: int,
+    nueva_habitacion_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    PUT /checkin/{reserva_id}/cambiar-habitacion/{nueva_habitacion_id}
+    Cambia la habitación asignada a una reserva antes del check-in
+    """
+    resultado = crud.cambiar_habitacion_reserva(db, reserva_id, nueva_habitacion_id)
+    if not resultado:
+        raise HTTPException(status_code=400, detail="No se pudo cambiar la habitación")
+    return resultado
 
 if __name__ == "__main__":
     import uvicorn

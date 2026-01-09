@@ -76,9 +76,9 @@ function ClientsView() {
     setSubmitting(true);
     setSubmitError(null);
 
-    // Validaciones
-    if (!formData.nombre_completo || !formData.dni || !formData.email) {
-      setSubmitError('Por favor completa todos los campos');
+    // Validaciones: teléfono obligatorio, email opcional
+    if (!formData.nombre_completo || !formData.dni || !formData.telefono) {
+      setSubmitError('Por favor completa: Nombre, DNI y Teléfono');
       setSubmitting(false);
       return;
     }

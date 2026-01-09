@@ -7,6 +7,7 @@ import RoomsView from './RoomsView';
 import ReservationsView from './ReservationsView';
 import ProductsView from './ProductsView';
 import HistoryView from './HistoryView';
+import CheckinView from './CheckinView';
 
 /**
  * Layout Component
@@ -21,6 +22,8 @@ function Layout({ children }) {
     switch (activeSection) {
       case 'dashboard':
         return <Dashboard setActiveSection={setActiveSection} />;
+      case 'checkin':
+        return <CheckinView />;
       case 'calendar':
         return <CalendarView />;
       case 'rooms':
@@ -50,6 +53,7 @@ function Layout({ children }) {
           <div className="px-8 py-6">
             <h2 className="text-2xl font-bold text-gray-900">
               {activeSection === 'dashboard' && '📊 Tablero'}
+              {activeSection === 'checkin' && '✅ Check-in'}
               {activeSection === 'rooms' && '🛏️ Habitaciones'}
               {activeSection === 'guests' && '👥 Clientes'}
               {activeSection === 'reservations' && '📋 Reservas'}

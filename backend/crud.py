@@ -66,18 +66,26 @@ def get_habitaciones(db: Session) -> list[dict]:
     print(f"[DEBUG] get_habitaciones - Fecha de hoy: {hoy}")
     
     for habitacion in todas_habitaciones:
-        # 1. Buscar si existe una reserva activa EN HOY
-        reserva_activa = db.query(Reserva).filter(
+        # 1. Buscar si existe una reserva EN CHECKIN para HOY (huésped ya llegó)
+        reserva_checkin = db.query(Reserva).filter(
             Reserva.habitacion_id == habitacion.id,
-            Reserva.estado != EstadoReserva.CANCELADA,
+            Reserva.estado == EstadoReserva.CHECKIN,
             Reserva.fecha_entrada <= hoy,
             Reserva.fecha_salida > hoy
         ).first()
         
-        # 2. Buscar próximas reservas FUTURAS (después de hoy)
+        # 2. Buscar si hay una reserva PENDIENTE para HOY (huésped por llegar)
+        reserva_pendiente_hoy = db.query(Reserva).filter(
+            Reserva.habitacion_id == habitacion.id,
+            Reserva.estado == EstadoReserva.PENDIENTE,
+            Reserva.fecha_entrada <= hoy,
+            Reserva.fecha_salida > hoy
+        ).first()
+        
+        # 3. Buscar próximas reservas FUTURAS (después de hoy) que no estén canceladas
         reservas_futuras = db.query(Reserva).filter(
             Reserva.habitacion_id == habitacion.id,
-            Reserva.estado != EstadoReserva.CANCELADA,
+            Reserva.estado.in_([EstadoReserva.PENDIENTE, EstadoReserva.CHECKIN]),
             Reserva.fecha_entrada > hoy
         ).order_by(Reserva.fecha_entrada.asc()).all()
         
@@ -99,22 +107,31 @@ def get_habitaciones(db: Session) -> list[dict]:
         # LÓGICA DE ESTADO VISUAL (Calculado, NO del campo BD)
         # ===============================================================
         
-        # PASO 1: Respetar estados manuales de mantenimiento
+        # PASO 1: Respetar estados manuales de mantenimiento/limpieza
         if habitacion.estado in ['MANTENIMIENTO', 'LIMPIEZA']:
             # Respetar la decisión manual del staff
             print(f"[DEBUG] Habitación {habitacion.numero}: {habitacion.estado} (manual del staff)")
-        # PASO 2: Si hay reserva HOY, forzar estado a OCUPADA (ignorar BD)
-        elif reserva_activa:
-            hab_dict["estado"] = 'OCUPADA'  # ← FORZADO por cálculo
-            hab_dict["reserva_actual_id"] = reserva_activa.id
-            hab_dict["reserva_actual_inicio"] = str(reserva_activa.fecha_entrada)
-            hab_dict["reserva_actual_fin"] = str(reserva_activa.fecha_salida)
-            if reserva_activa.cliente:
-                hab_dict["nombre_cliente"] = reserva_activa.cliente.nombre_completo
-            print(f"[DEBUG] Habitación {habitacion.numero}: OCUPADA (calculado del {reserva_activa.fecha_entrada} al {reserva_activa.fecha_salida})")
-        # PASO 3: Si NO hay reserva HOY, forzar estado a DISPONIBLE (incluso si BD dice OCUPADA)
+        # PASO 2: Si hay reserva en CHECKIN hoy, la habitación está OCUPADA
+        elif reserva_checkin:
+            hab_dict["estado"] = 'OCUPADA'  # ← Huésped ya llegó
+            hab_dict["reserva_actual_id"] = reserva_checkin.id
+            hab_dict["reserva_actual_inicio"] = str(reserva_checkin.fecha_entrada)
+            hab_dict["reserva_actual_fin"] = str(reserva_checkin.fecha_salida)
+            if reserva_checkin.cliente:
+                hab_dict["nombre_cliente"] = reserva_checkin.cliente.nombre_completo
+            print(f"[DEBUG] Habitación {habitacion.numero}: OCUPADA (CHECKIN del {reserva_checkin.fecha_entrada} al {reserva_checkin.fecha_salida})")
+        # PASO 3: Si hay reserva PENDIENTE hoy, mostrar como RESERVADA (esperando llegada)
+        elif reserva_pendiente_hoy:
+            hab_dict["estado"] = 'RESERVADA'  # ← Esperando que llegue el huésped
+            hab_dict["reserva_actual_id"] = reserva_pendiente_hoy.id
+            hab_dict["reserva_actual_inicio"] = str(reserva_pendiente_hoy.fecha_entrada)
+            hab_dict["reserva_actual_fin"] = str(reserva_pendiente_hoy.fecha_salida)
+            if reserva_pendiente_hoy.cliente:
+                hab_dict["nombre_cliente"] = reserva_pendiente_hoy.cliente.nombre_completo
+            print(f"[DEBUG] Habitación {habitacion.numero}: RESERVADA (pendiente check-in)")
+        # PASO 4: Si NO hay reserva activa, está DISPONIBLE
         else:
-            hab_dict["estado"] = 'DISPONIBLE'  # ← FORZADO, ignora BD
+            hab_dict["estado"] = 'DISPONIBLE'  # ← Sin huéspedes
             print(f"[DEBUG] Habitación {habitacion.numero}: DISPONIBLE (sin reserva activa)")
         
         # Agregar próximas reservas
@@ -186,7 +203,8 @@ def create_cliente(db: Session, cliente: ClienteCreate) -> Cliente:
     db_cliente = Cliente(
         dni=cliente.dni,
         nombre_completo=cliente.nombre_completo,
-        email=cliente.email
+        email=cliente.email,
+        telefono=cliente.telefono
     )
     db.add(db_cliente)
     db.commit()
@@ -227,6 +245,7 @@ def update_cliente(db: Session, cliente_id: int, cliente_data: ClienteCreate) ->
     cliente.dni = cliente_data.dni
     cliente.nombre_completo = cliente_data.nombre_completo
     cliente.email = cliente_data.email
+    cliente.telefono = cliente_data.telefono
     
     db.commit()
     db.refresh(cliente)
@@ -307,6 +326,38 @@ def get_habitaciones_disponibles(
 # ============================================================================
 # FUNCIONES: RESERVAS
 # ============================================================================
+
+def actualizar_reservas_vencidas(db: Session) -> int:
+    """
+    Actualiza automáticamente las reservas en CHECKIN cuya fecha de salida ya pasó.
+    Las marca como FINALIZADA.
+    
+    NOTA: Las reservas PENDIENTES NO se cancelan automáticamente ya que no hay
+    sistema de check-in implementado. El usuario debe cancelarlas manualmente si es necesario.
+    
+    Returns:
+        Número de reservas actualizadas
+    """
+    from datetime import date as date_class
+    hoy = date_class.today()
+    contador = 0
+    
+    # Solo actualizar reservas en CHECKIN cuya fecha de salida ya pasó → FINALIZADA
+    reservas_vencidas = db.query(Reserva).filter(
+        Reserva.estado == EstadoReserva.CHECKIN,
+        Reserva.fecha_salida < hoy
+    ).all()
+    
+    for reserva in reservas_vencidas:
+        reserva.estado = EstadoReserva.FINALIZADA
+        print(f"[AUTO] Reserva #{reserva.id} marcada como FINALIZADA (fecha salida: {reserva.fecha_salida})")
+        contador += 1
+    
+    if contador > 0:
+        db.commit()
+        print(f"[AUTO] Total de {contador} reservas actualizadas automáticamente")
+    
+    return contador
 
 def create_reserva(
     db: Session,
@@ -435,6 +486,10 @@ def checkout_reserva(db: Session, reserva_id: int):
     # Cambiar estado a FINALIZADA
     reserva.estado = EstadoReserva.FINALIZADA
     
+    # Liberar la habitación (cambiar estado a DISPONIBLE)
+    if reserva.habitacion:
+        reserva.habitacion.estado = EstadoHabitacion.DISPONIBLE
+    
     db.commit()
     db.refresh(reserva)
     return reserva
@@ -495,6 +550,40 @@ def delete_reserva(db: Session, reserva_id: int) -> bool:
     db.delete(reserva)
     db.commit()
     return True
+
+def cancelar_reserva(db: Session, reserva_id: int) -> dict:
+    """
+    Cancela una reserva (cambia estado a CANCELADA).
+    No elimina la reserva, solo cambia su estado para que aparezca en historial.
+    
+    Args:
+        db: Sesión de base de datos
+        reserva_id: ID de la reserva a cancelar
+    
+    Returns:
+        Diccionario con información de la cancelación
+    """
+    reserva = get_reserva(db, reserva_id)
+    if not reserva:
+        return None
+    
+    # No permitir cancelar si ya está en CHECKIN, FINALIZADA o CANCELADA
+    if reserva.estado in [EstadoReserva.CHECKIN, EstadoReserva.FINALIZADA, EstadoReserva.CANCELADA]:
+        return None
+    
+    # Cambiar estado a CANCELADA
+    reserva.estado = EstadoReserva.CANCELADA
+    
+    db.commit()
+    db.refresh(reserva)
+    
+    return {
+        "mensaje": "Reserva cancelada correctamente",
+        "reserva_id": reserva.id,
+        "estado": reserva.estado.value,
+        "cliente": reserva.cliente.nombre_completo if reserva.cliente else "N/A",
+        "habitacion": reserva.habitacion.numero if reserva.habitacion else "N/A"
+    }
 
 def delete_cliente(db: Session, cliente_id: int) -> bool:
     """
@@ -610,17 +699,19 @@ def get_habitaciones_por_fecha(db: Session, fecha_objetivo: date):
     
     for habitacion in todas_habitaciones:
         # 1. Buscar si existe una reserva activa EN fecha_objetivo
+        # Solo contar PENDIENTE y CHECKIN (no FINALIZADA ni CANCELADA)
         reserva_en_fecha = db.query(Reserva).filter(
             Reserva.habitacion_id == habitacion.id,
-            Reserva.estado != EstadoReserva.CANCELADA,
+            Reserva.estado.in_([EstadoReserva.PENDIENTE, EstadoReserva.CHECKIN]),
             Reserva.fecha_entrada <= fecha_objetivo,
             Reserva.fecha_salida > fecha_objetivo
         ).first()
         
         # 2. Buscar próximas reservas DESPUÉS de fecha_objetivo
+        # Solo contar PENDIENTE (no FINALIZADA ni CANCELADA)
         reservas_futuras = db.query(Reserva).filter(
             Reserva.habitacion_id == habitacion.id,
-            Reserva.estado != EstadoReserva.CANCELADA,
+            Reserva.estado == EstadoReserva.PENDIENTE,
             Reserva.fecha_entrada > fecha_objetivo
         ).order_by(Reserva.fecha_entrada.asc()).all()
         
@@ -789,4 +880,203 @@ def get_cuenta_reserva(db: Session, reserva_id: int):
         "consumos": consumos_detalle,
         "total_consumos": total_consumos,
         "total_general": total_alojamiento + total_consumos
+    }
+
+# ============================================================================
+# FUNCIONES: CHECK-IN
+# ============================================================================
+
+def get_llegadas_hoy(db: Session) -> list:
+    """
+    Obtiene todas las reservas con llegada programada para HOY que están en estado PENDIENTE.
+    Incluye datos del cliente y habitación para mostrar en la lista.
+    """
+    from datetime import date as date_class
+    hoy = date_class.today()
+    
+    reservas = db.query(Reserva).filter(
+        Reserva.fecha_entrada == hoy,
+        Reserva.estado == EstadoReserva.PENDIENTE
+    ).all()
+    
+    resultado = []
+    for reserva in reservas:
+        habitacion = reserva.habitacion
+        cliente = reserva.cliente
+        resultado.append({
+            "id": reserva.id,
+            "cliente_id": reserva.cliente_id,
+            "cliente_nombre": cliente.nombre_completo if cliente else "N/A",
+            "cliente_dni": cliente.dni if cliente else "N/A",
+            "cliente_email": cliente.email if cliente else "",
+            "cliente_telefono": cliente.telefono if cliente else "",
+            "habitacion_id": reserva.habitacion_id,
+            "habitacion_numero": habitacion.numero if habitacion else "N/A",
+            "habitacion_tipo": habitacion.tipo.value if habitacion else "N/A",
+            "habitacion_estado": habitacion.estado.value if habitacion else "N/A",
+            "fecha_entrada": reserva.fecha_entrada,
+            "fecha_salida": reserva.fecha_salida,
+            "precio_total": reserva.precio_total,
+            "noches": (reserva.fecha_salida - reserva.fecha_entrada).days,
+            "estado": reserva.estado.value
+        })
+    
+    return resultado
+
+def buscar_reservas_checkin(db: Session, query: str) -> list:
+    """
+    Busca reservas PENDIENTES por:
+    - Apellido/Nombre del cliente
+    - DNI del cliente
+    - ID de reserva
+    """
+    from datetime import date as date_class
+    
+    # Intentar buscar por ID de reserva si es número
+    try:
+        reserva_id = int(query)
+        reserva = db.query(Reserva).filter(
+            Reserva.id == reserva_id,
+            Reserva.estado == EstadoReserva.PENDIENTE
+        ).first()
+        if reserva:
+            return [_reserva_a_dict_checkin(reserva)]
+    except ValueError:
+        pass
+    
+    # Buscar por nombre o DNI
+    reservas = db.query(Reserva).join(Cliente).filter(
+        Reserva.estado == EstadoReserva.PENDIENTE,
+        (Cliente.nombre_completo.ilike(f"%{query}%")) | 
+        (Cliente.dni.ilike(f"%{query}%"))
+    ).all()
+    
+    return [_reserva_a_dict_checkin(r) for r in reservas]
+
+def _reserva_a_dict_checkin(reserva: Reserva) -> dict:
+    """Helper para convertir reserva a diccionario para check-in"""
+    habitacion = reserva.habitacion
+    cliente = reserva.cliente
+    return {
+        "id": reserva.id,
+        "cliente_id": reserva.cliente_id,
+        "cliente_nombre": cliente.nombre_completo if cliente else "N/A",
+        "cliente_dni": cliente.dni if cliente else "N/A",
+        "cliente_email": cliente.email if cliente else "",
+        "cliente_telefono": cliente.telefono if cliente else "",
+        "habitacion_id": reserva.habitacion_id,
+        "habitacion_numero": habitacion.numero if habitacion else "N/A",
+        "habitacion_tipo": habitacion.tipo.value if habitacion else "N/A",
+        "habitacion_estado": habitacion.estado.value if habitacion else "N/A",
+        "fecha_entrada": reserva.fecha_entrada,
+        "fecha_salida": reserva.fecha_salida,
+        "precio_total": reserva.precio_total,
+        "noches": (reserva.fecha_salida - reserva.fecha_entrada).days,
+        "estado": reserva.estado.value
+    }
+
+def realizar_checkin(db: Session, reserva_id: int, datos_cliente = None) -> dict:
+    """
+    Realiza el check-in de una reserva:
+    1. Verifica que la reserva esté en estado PENDIENTE
+    2. Actualiza datos del cliente si se proporcionan
+    3. Cambia estado de la reserva a CHECKIN
+    4. Cambia estado de la habitación a OCUPADA
+    5. Registra el timestamp del check-in
+    """
+    from datetime import datetime
+    
+    reserva = db.query(Reserva).filter(Reserva.id == reserva_id).first()
+    if not reserva or reserva.estado != EstadoReserva.PENDIENTE:
+        return None
+    
+    # Verificar que la habitación no esté en MANTENIMIENTO o LIMPIEZA
+    habitacion = reserva.habitacion
+    if habitacion and habitacion.estado in [EstadoHabitacion.MANTENIMIENTO, EstadoHabitacion.LIMPIEZA]:
+        return {"error": f"La habitación está en {habitacion.estado.value}"}
+    
+    # Actualizar datos del cliente si se proporcionan
+    if datos_cliente:
+        cliente = reserva.cliente
+        if cliente:
+            if datos_cliente.email:
+                cliente.email = datos_cliente.email
+            if datos_cliente.telefono:
+                cliente.telefono = datos_cliente.telefono
+            if datos_cliente.nombre_completo:
+                cliente.nombre_completo = datos_cliente.nombre_completo
+    
+    # Cambiar estado de la reserva a CHECKIN
+    reserva.estado = EstadoReserva.CHECKIN
+    reserva.checkin_timestamp = datetime.now()
+    
+    # Cambiar estado de la habitación a OCUPADA
+    habitacion = reserva.habitacion
+    if habitacion:
+        habitacion.estado = EstadoHabitacion.OCUPADA
+    
+    db.commit()
+    db.refresh(reserva)
+    
+    return {
+        "mensaje": "Check-in realizado correctamente",
+        "reserva_id": reserva.id,
+        "habitacion": habitacion.numero if habitacion else "N/A",
+        "cliente": reserva.cliente.nombre_completo if reserva.cliente else "N/A",
+        "checkin_timestamp": reserva.checkin_timestamp.isoformat() if reserva.checkin_timestamp else None,
+        "fecha_salida": reserva.fecha_salida.isoformat()
+    }
+
+def get_habitaciones_disponibles_checkin(db: Session) -> list:
+    """
+    Obtiene habitaciones que están DISPONIBLES para reasignación durante check-in.
+    Solo muestra habitaciones con estado DISPONIBLE (limpias y libres).
+    """
+    habitaciones = db.query(Habitacion).filter(
+        Habitacion.estado == EstadoHabitacion.DISPONIBLE
+    ).all()
+    
+    return [{
+        "id": h.id,
+        "numero": h.numero,
+        "tipo": h.tipo.value,
+        "precio_base": h.precio_base,
+        "estado": h.estado.value
+    } for h in habitaciones]
+
+def cambiar_habitacion_reserva(db: Session, reserva_id: int, nueva_habitacion_id: int) -> dict:
+    """
+    Cambia la habitación asignada a una reserva (antes del check-in).
+    Recalcula el precio si es necesario.
+    """
+    reserva = db.query(Reserva).filter(Reserva.id == reserva_id).first()
+    if not reserva or reserva.estado != EstadoReserva.PENDIENTE:
+        return None
+    
+    nueva_habitacion = db.query(Habitacion).filter(Habitacion.id == nueva_habitacion_id).first()
+    if not nueva_habitacion or nueva_habitacion.estado != EstadoHabitacion.DISPONIBLE:
+        return None
+    
+    habitacion_anterior = reserva.habitacion
+    
+    # Calcular nuevo precio
+    noches = (reserva.fecha_salida - reserva.fecha_entrada).days
+    if noches < 1:
+        noches = 1
+    nuevo_precio = nueva_habitacion.precio_base * noches
+    
+    # Actualizar reserva
+    reserva.habitacion_id = nueva_habitacion_id
+    reserva.precio_total = nuevo_precio
+    
+    db.commit()
+    db.refresh(reserva)
+    
+    return {
+        "mensaje": "Habitación cambiada correctamente",
+        "reserva_id": reserva.id,
+        "habitacion_anterior": habitacion_anterior.numero if habitacion_anterior else "N/A",
+        "habitacion_nueva": nueva_habitacion.numero,
+        "precio_anterior": reserva.precio_total,
+        "precio_nuevo": nuevo_precio
     }

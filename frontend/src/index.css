@@ -43,7 +43,7 @@ code {
     top: 0;
     width: 100%;
     background: white;
-    padding: 20px;
+    padding: 0;
   }
   
   /* Ocultar botones y elementos interactivos */
@@ -51,8 +51,43 @@ code {
     display: none !important;
   }
   
-  /* Ajustar colores para impresión */
+  /* Configuración de página A4 vertical para duplicado */
   @page {
-    margin: 1cm;
+    size: A4 portrait;
+    margin: 0.3cm;
+  }
+
+  /* Contenedor de duplicados uno arriba del otro */
+  .print-duplicado {
+    display: flex !important;
+    flex-direction: column !important;
+    width: 100% !important;
+    height: 100vh !important;
+  }
+
+  /* Cada copia ocupa la mitad vertical */
+  .comprobante-copia {
+    width: 100% !important;
+    height: 50% !important;
+    padding: 8px 15px !important;
+    font-size: 10px !important;
+    page-break-inside: avoid;
+    box-sizing: border-box;
+  }
+
+  /* Ajustar textos para impresión */
+  .comprobante-copia h1 {
+    font-size: 14px !important;
+  }
+
+  .comprobante-copia table {
+    font-size: 9px !important;
+  }
+
+  /* Línea punteada divisoria horizontal */
+  .comprobante-copia:first-child {
+    border-bottom: 2px dashed #666 !important;
+    border-right: none !important;
   }
 }
+

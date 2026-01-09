@@ -39,19 +39,30 @@ function ReservationsView() {
     }
   };
 
-  const handleDelete = async (reservation) => {
-    const confirmMsg = `¿Estás seguro de eliminar la reserva #${reservation.id}?\n\nHabitación: ${reservation.habitacion?.numero || reservation.habitacion_id}\nCliente: ${reservation.cliente?.nombre_completo || reservation.cliente_id}\nFechas: ${reservation.fecha_entrada} - ${reservation.fecha_salida}`;
+  const handleCancel = async (reservation) => {
+    // No permitir cancelar si ya está en CHECKIN, FINALIZADA o CANCELADA
+    const estado = reservation.estado?.toUpperCase();
+    if (estado === 'CHECKIN') {
+      alert('⚠️ No puedes cancelar una reserva que ya hizo Check-in. Usa Checkout en su lugar.');
+      return;
+    }
+    if (estado === 'FINALIZADA' || estado === 'CANCELADA') {
+      alert('⚠️ Esta reserva ya está finalizada o cancelada.');
+      return;
+    }
+    
+    const confirmMsg = `¿Estás seguro de CANCELAR la reserva #${reservation.id}?\n\nHabitación: ${reservation.habitacion?.numero || reservation.habitacion_id}\nCliente: ${reservation.cliente?.nombre_completo || reservation.cliente_id}\nFechas: ${reservation.fecha_entrada} - ${reservation.fecha_salida}\n\nLa reserva aparecerá en el historial como CANCELADA.`;
     
     if (!confirm(confirmMsg)) {
       return;
     }
     
     try {
-      await api.delete(`/reservas/${reservation.id}`);
-      alert('✅ Reserva eliminada correctamente');
+      await api.put(`/reservas/${reservation.id}/cancelar`);
+      alert('✅ Reserva cancelada correctamente');
       loadReservations();
     } catch (err) {
-      alert(`❌ Error: ${err.response?.data?.detail || 'No se pudo eliminar la reserva'}`);
+      alert(`❌ Error: ${err.response?.data?.detail || 'No se pudo cancelar la reserva'}`);
     }
   };
 
@@ -116,7 +127,8 @@ function ReservationsView() {
 
   const formatDate = (dateString) => {
     if (!dateString) return '';
-    const date = new Date(dateString);
+    // Agregar T00:00:00 para evitar problemas de zona horaria
+    const date = new Date(dateString + 'T00:00:00');
     return date.toLocaleDateString('es-ES', { 
       day: '2-digit', 
       month: '2-digit', 
@@ -124,15 +136,80 @@ function ReservationsView() {
     });
   };
 
-  const getStatusBadge = (estado) => {
+  // Verificar si una fecha es hoy
+  const isToday = (dateString) => {
+    if (!dateString) return false;
+    const date = new Date(dateString + 'T00:00:00');
+    const today = new Date();
+    return date.getDate() === today.getDate() &&
+           date.getMonth() === today.getMonth() &&
+           date.getFullYear() === today.getFullYear();
+  };
+
+  // Obtener estado visual (considera si debe hacer check-in hoy)
+  const getEstadoVisual = (reservation) => {
+    const estado = reservation.estado?.toUpperCase();
+    // Si está PENDIENTE y la fecha de entrada es HOY, mostrar como "LLEGAHOY"
+    if (estado === 'PENDIENTE' && isToday(reservation.fecha_entrada)) {
+      return 'LLEGAHOY';
+    }
+    return estado;
+  };
+
+  const getStatusBadge = (estadoVisual) => {
     const badges = {
       'PENDIENTE': 'bg-yellow-100 text-yellow-800',
-      'CHECKIN': 'bg-green-100 text-green-800',
+      'LLEGAHOY': 'bg-orange-500 text-white',  // Naranja para check-in pendiente hoy
+      'CHECKIN': 'bg-green-500 text-white',    // Verde para activas
       'CHECKOUT': 'bg-blue-100 text-blue-800',
+      'FINALIZADA': 'bg-gray-100 text-gray-800',
       'CANCELADA': 'bg-red-100 text-red-800',
     };
-    return badges[estado] || 'bg-gray-100 text-gray-800';
+    return badges[estadoVisual] || 'bg-gray-100 text-gray-800';
   };
+
+  // Texto amigable para estados (Primera letra mayúscula)
+  const getStatusText = (estadoVisual) => {
+    const textos = {
+      'PENDIENTE': '⏳ Pendiente',
+      'LLEGAHOY': '🔔 Check-in hoy',
+      'CHECKIN': '🏠 Activa',
+      'CHECKOUT': '📤 Checkout',
+      'FINALIZADA': '✓ Finalizada',
+      'CANCELADA': '✗ Cancelada',
+    };
+    return textos[estadoVisual] || estadoVisual;
+  };
+
+  // Ordenar reservas: CHECK-IN HOY primero, luego ACTIVAS, luego PENDIENTES
+  const getEstadoPrioridad = (reservation) => {
+    const estadoVisual = getEstadoVisual(reservation);
+    const prioridades = {
+      'LLEGAHOY': 0,    // Check-in pendiente hoy (máxima prioridad)
+      'CHECKIN': 1,     // Activas (huésped alojado)
+      'PENDIENTE': 2,   // Futuras
+      'CONFIRMADA': 3,
+      'CHECKOUT': 4,
+      'FINALIZADA': 5,
+      'CANCELADA': 6,
+    };
+    return prioridades[estadoVisual] ?? 99;
+  };
+
+  const sortedReservations = [...reservations].sort((a, b) => {
+    // Primero ordenar por prioridad de estado
+    const prioridadA = getEstadoPrioridad(a);
+    const prioridadB = getEstadoPrioridad(b);
+    
+    if (prioridadA !== prioridadB) {
+      return prioridadA - prioridadB;
+    }
+    
+    // Si tienen el mismo estado, ordenar por fecha de entrada (más próxima primero)
+    const fechaA = new Date(a.fecha_entrada + 'T00:00:00');
+    const fechaB = new Date(b.fecha_entrada + 'T00:00:00');
+    return fechaA - fechaB;
+  });
 
   // Renderizar estado de carga
   if (loading) {
@@ -160,7 +237,7 @@ function ReservationsView() {
   }
 
   return (
-    <div className="max-w-6xl">
+    <div className="w-full max-w-full px-4">
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div>
@@ -195,6 +272,12 @@ function ReservationsView() {
                   </div>
                 </th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">
+                  📧 Email
+                </th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">
+                  📞 Teléfono
+                </th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">
                   <div className="flex items-center gap-1">
                     <Calendar size={14} />
                     Entrada
@@ -212,7 +295,7 @@ function ReservationsView() {
               </tr>
             </thead>
             <tbody>
-              {reservations.map((reservation, index) => (
+              {sortedReservations.map((reservation, index) => (
                 <tr
                   key={reservation.id}
                   className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
@@ -224,6 +307,12 @@ function ReservationsView() {
                   <td className="px-4 py-4 text-sm text-gray-700">
                     {reservation.cliente?.nombre_completo || `Cliente #${reservation.cliente_id}`}
                   </td>
+                  <td className="px-4 py-4 text-sm text-gray-500">
+                    {reservation.cliente?.email || '-'}
+                  </td>
+                  <td className="px-4 py-4 text-sm text-gray-500">
+                    {reservation.cliente?.telefono || '-'}
+                  </td>
                   <td className="px-4 py-4 text-sm text-gray-700">
                     {formatDate(reservation.fecha_entrada)}
                   </td>
@@ -231,8 +320,8 @@ function ReservationsView() {
                     {formatDate(reservation.fecha_salida)}
                   </td>
                   <td className="px-4 py-4">
-                    <span className={`px-2 py-1 text-xs font-semibold rounded ${getStatusBadge(reservation.estado)}`}>
-                      {reservation.estado}
+                    <span className={`px-2 py-1 text-xs font-semibold rounded ${getStatusBadge(getEstadoVisual(reservation))}`}>
+                      {getStatusText(getEstadoVisual(reservation))}
                     </span>
                   </td>
                   <td className="px-4 py-4 text-sm font-semibold text-green-600 text-right">
@@ -260,13 +349,16 @@ function ReservationsView() {
                           </button>
                         </>
                       )}
-                      <button
-                        onClick={() => handleDelete(reservation)}
-                        className="inline-flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 transition text-xs font-medium"
-                        title="Eliminar reserva"
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                      {reservation.estado !== 'CANCELADA' && reservation.estado !== 'FINALIZADA' && reservation.estado !== 'CHECKIN' && (
+                        <button
+                          onClick={() => handleCancel(reservation)}
+                          className="inline-flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 transition text-xs font-medium"
+                          title="Cancelar reserva"
+                        >
+                          <Trash2 size={14} />
+                          Cancelar
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

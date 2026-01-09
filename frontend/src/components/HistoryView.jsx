@@ -25,6 +25,7 @@ function HistoryView() {
     try {
       setLoading(true);
       const response = await api.get('/reservas/historial');
+      console.log('Historial cargado:', response.data?.length, 'reservas');
       setReservas(response.data || []);
     } catch (err) {
       console.error('Error al cargar historial:', err);
@@ -119,9 +120,20 @@ function HistoryView() {
     }
   };
 
+  // Texto amigable para estados (Primera letra mayúscula)
+  const getEstadoText = (estado) => {
+    const textos = {
+      'FINALIZADA': '✓ Finalizada',
+      'CANCELADA': '✗ Cancelada',
+      'CHECKOUT': '📤 Checkout',
+    };
+    return textos[estado] || estado;
+  };
+
   const formatDate = (dateStr) => {
     if (!dateStr) return '';
-    return new Date(dateStr).toLocaleDateString('es-MX', {
+    // Agregar T00:00:00 para evitar problemas de zona horaria
+    return new Date(dateStr + 'T00:00:00').toLocaleDateString('es-ES', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric'
@@ -209,11 +221,11 @@ function HistoryView() {
                   <td className="px-6 py-4 text-sm text-gray-600">{formatDate(reserva.fecha_salida)}</td>
                   <td className="px-6 py-4">
                     <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getEstadoBadge(reserva.estado)}`}>
-                      {reserva.estado}
+                      {getEstadoText(reserva.estado)}
                     </span>
                   </td>
                   <td className="px-6 py-4 text-sm font-bold text-gray-900">
-                    ${reserva.precio_total?.toFixed(2)}
+                    ${reserva.estado === 'CANCELADA' ? '0.00' : reserva.precio_total?.toFixed(2)}
                   </td>
                   <td className="px-6 py-4 text-right">
                     <button
@@ -235,10 +247,10 @@ function HistoryView() {
       {/* Modal de Factura/Comprobante */}
       {isInvoiceModalOpen && invoiceData && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-2xl w-full max-w-3xl max-h-[95vh] overflow-auto">
+          <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl max-h-[95vh] overflow-auto">
             {/* Header del modal (no se imprime) */}
             <div className="flex items-center justify-between p-4 border-b no-print">
-              <h2 className="text-lg font-semibold">Comprobante de Estancia</h2>
+              <h2 className="text-lg font-semibold">Comprobante de Estancia (Duplicado)</h2>
               <button
                 onClick={() => setIsInvoiceModalOpen(false)}
                 className="text-gray-400 hover:text-gray-600"
@@ -247,173 +259,226 @@ function HistoryView() {
               </button>
             </div>
 
-            {/* Contenido del comprobante (esto se imprime) */}
-            <div id="invoice-content" className="p-8 bg-white">
-              {/* Cabecera del Hotel */}
-              <div className="text-center mb-8 border-b pb-6">
-                <h1 className="text-3xl font-bold text-gray-800">🏨 PUENTE HOTEL</h1>
-                <p className="text-gray-500 mt-1">Sistema de Gestión Hotelera</p>
-                <p className="text-sm text-gray-400">Av. Principal #123, Ciudad • Tel: (555) 123-4567</p>
+            {/* Agregar item manual (no se imprime) - Movido arriba */}
+            <div className="p-4 bg-gray-50 border-b no-print">
+              <p className="text-sm font-medium text-gray-700 mb-2">Agregar ítem manual (Descuento, Daños, etc.)</p>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Concepto"
+                  value={newItemForm.concepto}
+                  onChange={(e) => setNewItemForm({...newItemForm, concepto: e.target.value})}
+                  className="flex-1 px-3 py-2 border rounded"
+                />
+                <input
+                  type="number"
+                  placeholder="Cant."
+                  value={newItemForm.cantidad}
+                  onChange={(e) => setNewItemForm({...newItemForm, cantidad: e.target.value})}
+                  className="w-20 px-3 py-2 border rounded"
+                  min="1"
+                />
+                <input
+                  type="number"
+                  placeholder="Precio"
+                  value={newItemForm.precio}
+                  onChange={(e) => setNewItemForm({...newItemForm, precio: e.target.value})}
+                  className="w-24 px-3 py-2 border rounded"
+                  step="0.01"
+                />
+                <button
+                  onClick={handleAddExtraItem}
+                  className="px-4 py-2 bg-yellow-500 text-white rounded hover:bg-yellow-600"
+                >
+                  <Plus size={16} />
+                </button>
               </div>
+              <p className="text-xs text-gray-500 mt-1">Usa precio negativo para descuentos</p>
+            </div>
 
-              {/* Datos del comprobante */}
-              <div className="grid grid-cols-2 gap-6 mb-8">
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-500 uppercase mb-2">Datos del Huésped</h3>
-                  <p className="font-bold text-lg">{invoiceData.cliente_nombre}</p>
-                  <p className="text-gray-600">Habitación: {invoiceData.habitacion_numero}</p>
-                </div>
-                <div className="text-right">
-                  <h3 className="text-sm font-semibold text-gray-500 uppercase mb-2">Comprobante</h3>
-                  <p className="font-bold text-lg">#{selectedReserva?.id}</p>
-                  <p className="text-gray-600">Fecha: {formatDate(new Date().toISOString())}</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-6 mb-8 p-4 bg-gray-50 rounded-lg">
-                <div>
-                  <span className="text-sm text-gray-500">Check-in:</span>
-                  <p className="font-semibold">{formatDate(invoiceData.fecha_entrada)}</p>
-                </div>
-                <div>
-                  <span className="text-sm text-gray-500">Check-out:</span>
-                  <p className="font-semibold">{formatDate(invoiceData.fecha_salida)}</p>
-                </div>
-              </div>
-
-              {/* Tabla de Items */}
-              <table className="w-full mb-6">
-                <thead>
-                  <tr className="border-b-2 border-gray-300">
-                    <th className="text-left py-2 text-sm font-semibold text-gray-600">Concepto</th>
-                    <th className="text-center py-2 text-sm font-semibold text-gray-600">Cantidad</th>
-                    <th className="text-right py-2 text-sm font-semibold text-gray-600">Precio Unit.</th>
-                    <th className="text-right py-2 text-sm font-semibold text-gray-600">Subtotal</th>
-                    <th className="w-10 no-print"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {/* Alojamiento */}
-                  <tr className="border-b">
-                    <td className="py-3">
-                      <span className="font-medium">🛏️ Alojamiento</span>
-                      <span className="text-gray-500 text-sm ml-2">({invoiceData.noches} noches)</span>
-                    </td>
-                    <td className="text-center">{invoiceData.noches}</td>
-                    <td className="text-right">${invoiceData.precio_noche?.toFixed(2)}</td>
-                    <td className="text-right font-semibold">${invoiceData.total_alojamiento?.toFixed(2)}</td>
-                    <td className="no-print"></td>
-                  </tr>
-
-                  {/* Consumos */}
-                  {invoiceData.consumos?.map((consumo, idx) => (
-                    <tr key={idx} className="border-b">
-                      <td className="py-3">
-                        <Package size={16} className="inline mr-2 text-purple-500" />
-                        {consumo.producto_nombre}
-                      </td>
-                      <td className="text-center">{consumo.cantidad}</td>
-                      <td className="text-right">${consumo.precio_unitario?.toFixed(2)}</td>
-                      <td className="text-right">${consumo.subtotal?.toFixed(2)}</td>
-                      <td className="no-print">
-                        <button
-                          onClick={() => handleRemoveConsumo(idx)}
-                          className="text-red-500 hover:text-red-700"
-                          title="Quitar"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-
-                  {/* Items extra (manuales) */}
-                  {extraItems.map((item, idx) => (
-                    <tr key={`extra-${idx}`} className="border-b bg-yellow-50">
-                      <td className="py-3">
-                        <span className="text-yellow-700">✏️ {item.concepto}</span>
-                      </td>
-                      <td className="text-center">{item.cantidad}</td>
-                      <td className="text-right">${item.precio.toFixed(2)}</td>
-                      <td className="text-right">${(item.cantidad * item.precio).toFixed(2)}</td>
-                      <td className="no-print">
-                        <button
-                          onClick={() => handleRemoveExtraItem(idx)}
-                          className="text-red-500 hover:text-red-700"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-
-              {/* Agregar item manual (no se imprime) */}
-              <div className="mb-6 p-4 bg-gray-50 rounded-lg no-print">
-                <p className="text-sm font-medium text-gray-700 mb-2">Agregar ítem manual (Descuento, Daños, etc.)</p>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="Concepto"
-                    value={newItemForm.concepto}
-                    onChange={(e) => setNewItemForm({...newItemForm, concepto: e.target.value})}
-                    className="flex-1 px-3 py-2 border rounded"
-                  />
-                  <input
-                    type="number"
-                    placeholder="Cant."
-                    value={newItemForm.cantidad}
-                    onChange={(e) => setNewItemForm({...newItemForm, cantidad: e.target.value})}
-                    className="w-20 px-3 py-2 border rounded"
-                    min="1"
-                  />
-                  <input
-                    type="number"
-                    placeholder="Precio"
-                    value={newItemForm.precio}
-                    onChange={(e) => setNewItemForm({...newItemForm, precio: e.target.value})}
-                    className="w-24 px-3 py-2 border rounded"
-                    step="0.01"
-                  />
-                  <button
-                    onClick={handleAddExtraItem}
-                    className="px-4 py-2 bg-yellow-500 text-white rounded hover:bg-yellow-600"
-                  >
-                    <Plus size={16} />
-                  </button>
-                </div>
-                <p className="text-xs text-gray-500 mt-1">Usa precio negativo para descuentos</p>
-              </div>
-
-              {/* Total */}
-              <div className="border-t-2 border-gray-300 pt-4">
-                <div className="flex justify-between items-center text-sm mb-2">
-                  <span>Subtotal Alojamiento:</span>
-                  <span>${invoiceData.total_alojamiento?.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between items-center text-sm mb-2">
-                  <span>Subtotal Consumos:</span>
-                  <span>${invoiceData.total_consumos?.toFixed(2)}</span>
-                </div>
-                {extraItems.length > 0 && (
-                  <div className="flex justify-between items-center text-sm mb-2">
-                    <span>Otros cargos/descuentos:</span>
-                    <span>${extraItems.reduce((sum, i) => sum + (i.cantidad * i.precio), 0).toFixed(2)}</span>
+            {/* Contenido del comprobante - DOS COPIAS (esto se imprime) */}
+            <div id="invoice-content" className="bg-white print-area">
+              {/* Contenedor de las dos copias una arriba de otra */}
+              <div className="print-duplicado flex flex-col">
+                {/* COPIA CLIENTE */}
+                <div className="comprobante-copia p-4 flex-1 border-b-2 border-dashed border-gray-400">
+                  {/* Etiqueta de copia */}
+                  <div className="text-center mb-2">
+                    <span className="inline-block px-3 py-1 bg-blue-100 text-blue-800 text-xs font-bold rounded-full uppercase">
+                      Copia Cliente
+                    </span>
                   </div>
-                )}
-                <div className="flex justify-between items-center text-xl font-bold mt-4 pt-4 border-t">
-                  <span>TOTAL A PAGAR:</span>
-                  <span className="text-green-700">
-                    ${(invoiceData.total_alojamiento + invoiceData.total_consumos + extraItems.reduce((sum, i) => sum + (i.cantidad * i.precio), 0)).toFixed(2)}
-                  </span>
-                </div>
-              </div>
 
-              {/* Pie */}
-              <div className="mt-8 pt-6 border-t text-center text-gray-400 text-sm">
-                <p>¡Gracias por su preferencia!</p>
-                <p>Puente Hotel - Donde cada estancia es especial</p>
+                  {/* Cabecera del Hotel */}
+                  <div className="text-center mb-4 border-b pb-3">
+                    <h1 className="text-lg font-bold text-gray-800">🏨 PUENTE HOTEL</h1>
+                    <p className="text-xs text-gray-400">Av. Principal #123 • Tel: (555) 123-4567</p>
+                  </div>
+
+                  {/* Datos del comprobante */}
+                  <div className="flex justify-between mb-3 text-xs">
+                    <div>
+                      <p className="font-bold">{invoiceData.cliente_nombre}</p>
+                      <p className="text-gray-600">Hab: {invoiceData.habitacion_numero}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-bold">#{selectedReserva?.id}</p>
+                      <p className="text-gray-600">{formatDate(new Date().toISOString())}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between mb-3 p-2 bg-gray-50 rounded text-xs">
+                    <div>
+                      <span className="text-gray-500">Check-in:</span>
+                      <p className="font-semibold">{formatDate(invoiceData.fecha_entrada)}</p>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-gray-500">Check-out:</span>
+                      <p className="font-semibold">{formatDate(invoiceData.fecha_salida)}</p>
+                    </div>
+                  </div>
+
+                  {/* Tabla de Items */}
+                  <table className="w-full mb-3 text-xs">
+                    <thead>
+                      <tr className="border-b border-gray-300">
+                        <th className="text-left py-1 font-semibold text-gray-600">Concepto</th>
+                        <th className="text-center py-1 font-semibold text-gray-600">Cant.</th>
+                        <th className="text-right py-1 font-semibold text-gray-600">Subtotal</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="border-b">
+                        <td className="py-1">🛏️ Alojamiento ({invoiceData.noches} noches)</td>
+                        <td className="text-center">{invoiceData.noches}</td>
+                        <td className="text-right font-semibold">${invoiceData.total_alojamiento?.toFixed(2)}</td>
+                      </tr>
+                      {invoiceData.consumos?.map((consumo, idx) => (
+                        <tr key={idx} className="border-b">
+                          <td className="py-1">{consumo.producto_nombre}</td>
+                          <td className="text-center">{consumo.cantidad}</td>
+                          <td className="text-right">${consumo.subtotal?.toFixed(2)}</td>
+                        </tr>
+                      ))}
+                      {extraItems.map((item, idx) => (
+                        <tr key={`extra-${idx}`} className="border-b bg-yellow-50">
+                          <td className="py-1">✏️ {item.concepto}</td>
+                          <td className="text-center">{item.cantidad}</td>
+                          <td className="text-right">${(item.cantidad * item.precio).toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+
+                  {/* Total */}
+                  <div className="border-t-2 border-gray-300 pt-2">
+                    <div className="flex justify-between items-center text-sm font-bold">
+                      <span>TOTAL:</span>
+                      <span className="text-green-700">
+                        ${(invoiceData.total_alojamiento + invoiceData.total_consumos + extraItems.reduce((sum, i) => sum + (i.cantidad * i.precio), 0)).toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Pie */}
+                  <div className="mt-3 pt-2 border-t text-center">
+                    <p className="text-xs text-gray-500">¡Gracias por su preferencia!</p>
+                    <p className="text-xs text-red-600 font-semibold mt-1">*No válido como factura</p>
+                  </div>
+                </div>
+
+                {/* COPIA HOTEL */}
+                <div className="comprobante-copia p-4 flex-1">
+                  {/* Etiqueta de copia */}
+                  <div className="text-center mb-2">
+                    <span className="inline-block px-3 py-1 bg-green-100 text-green-800 text-xs font-bold rounded-full uppercase">
+                      Copia Hotel
+                    </span>
+                  </div>
+
+                  {/* Cabecera del Hotel */}
+                  <div className="text-center mb-4 border-b pb-3">
+                    <h1 className="text-lg font-bold text-gray-800">🏨 PUENTE HOTEL</h1>
+                    <p className="text-xs text-gray-400">Av. Principal #123 • Tel: (555) 123-4567</p>
+                  </div>
+
+                  {/* Datos del comprobante */}
+                  <div className="flex justify-between mb-3 text-xs">
+                    <div>
+                      <p className="font-bold">{invoiceData.cliente_nombre}</p>
+                      <p className="text-gray-600">Hab: {invoiceData.habitacion_numero}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-bold">#{selectedReserva?.id}</p>
+                      <p className="text-gray-600">{formatDate(new Date().toISOString())}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between mb-3 p-2 bg-gray-50 rounded text-xs">
+                    <div>
+                      <span className="text-gray-500">Check-in:</span>
+                      <p className="font-semibold">{formatDate(invoiceData.fecha_entrada)}</p>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-gray-500">Check-out:</span>
+                      <p className="font-semibold">{formatDate(invoiceData.fecha_salida)}</p>
+                    </div>
+                  </div>
+
+                  {/* Tabla de Items */}
+                  <table className="w-full mb-3 text-xs">
+                    <thead>
+                      <tr className="border-b border-gray-300">
+                        <th className="text-left py-1 font-semibold text-gray-600">Concepto</th>
+                        <th className="text-center py-1 font-semibold text-gray-600">Cant.</th>
+                        <th className="text-right py-1 font-semibold text-gray-600">Subtotal</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="border-b">
+                        <td className="py-1">🛏️ Alojamiento ({invoiceData.noches} noches)</td>
+                        <td className="text-center">{invoiceData.noches}</td>
+                        <td className="text-right font-semibold">${invoiceData.total_alojamiento?.toFixed(2)}</td>
+                      </tr>
+                      {invoiceData.consumos?.map((consumo, idx) => (
+                        <tr key={idx} className="border-b">
+                          <td className="py-1">{consumo.producto_nombre}</td>
+                          <td className="text-center">{consumo.cantidad}</td>
+                          <td className="text-right">${consumo.subtotal?.toFixed(2)}</td>
+                        </tr>
+                      ))}
+                      {extraItems.map((item, idx) => (
+                        <tr key={`extra-${idx}`} className="border-b bg-yellow-50">
+                          <td className="py-1">✏️ {item.concepto}</td>
+                          <td className="text-center">{item.cantidad}</td>
+                          <td className="text-right">${(item.cantidad * item.precio).toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+
+                  {/* Total */}
+                  <div className="border-t-2 border-gray-300 pt-2">
+                    <div className="flex justify-between items-center text-sm font-bold">
+                      <span>TOTAL:</span>
+                      <span className="text-green-700">
+                        ${(invoiceData.total_alojamiento + invoiceData.total_consumos + extraItems.reduce((sum, i) => sum + (i.cantidad * i.precio), 0)).toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Pie */}
+                  <div className="mt-3 pt-2 border-t text-center">
+                    <p className="text-xs text-gray-500">¡Gracias por su preferencia!</p>
+                    <p className="text-xs text-red-600 font-semibold mt-1">*No válido como factura</p>
+                  </div>
+
+                  {/* Campo firma solo en copia hotel */}
+                  <div className="mt-4 pt-3 border-t">
+                    <div className="border-b border-gray-400 w-full mb-1" style={{height: '30px'}}></div>
+                    <p className="text-xs text-gray-500 text-center">Firma del huésped</p>
+                  </div>
+                </div>
               </div>
             </div>
 

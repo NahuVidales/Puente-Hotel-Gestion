@@ -8,6 +8,7 @@ import {
   ClipboardList,
   Package,
   History,
+  UserCheck,
 } from 'lucide-react';
 
 /**
@@ -23,6 +24,12 @@ function Sidebar({ activeSection, setActiveSection }) {
       label: 'Tablero',
       icon: LayoutDashboard,
       color: 'text-blue-400',
+    },
+    {
+      id: 'checkin',
+      label: 'Check-in',
+      icon: UserCheck,
+      color: 'text-emerald-400',
     },
     {
       id: 'rooms',
