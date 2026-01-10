@@ -85,10 +85,10 @@ class ReservaBase(BaseModel):
 
 class ReservaCreate(ReservaBase):
     """
-    IMPORTANTE: No incluye precio_total ni estado
-    El servidor calcula estos valores automáticamente
+    IMPORTANTE: precio_noche es opcional
+    Si no se envía, se usa el precio_base de la habitación
     """
-    pass
+    precio_noche: Optional[float] = Field(None, gt=0, description="Precio por noche personalizado (opcional)")
 
 class ReservaUpdate(BaseModel):
     estado: Optional[str] = None

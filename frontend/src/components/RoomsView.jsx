@@ -8,6 +8,7 @@ import BookingModal from './BookingModal';
 const RoomsView = () => {
   const [rooms, setRooms] = useState([]);
   const [products, setProducts] = useState([]);
+  const [filterType, setFilterType] = useState('TODAS'); // Nuevo estado para el filtro
   
   // Estados para Modals
   const [isConsumptionModalOpen, setIsConsumptionModalOpen] = useState(false);
@@ -112,6 +113,12 @@ const RoomsView = () => {
   };
 
   // --- RENDERIZADO ---
+  
+  // Filtrar habitaciones según el tipo seleccionado
+  const filteredRooms = filterType === 'TODAS' 
+    ? rooms 
+    : rooms.filter(room => room.tipo === filterType);
+
   return (
     <div className="p-6">
       {/* Header con título y botón agregar */}
@@ -126,8 +133,29 @@ const RoomsView = () => {
         </button>
       </div>
 
+      {/* FILTRO POR TIPO DE HABITACIÓN */}
+      <div className="mb-6 flex flex-wrap gap-2">
+        <span className="text-gray-600 font-medium self-center mr-2">Filtrar por tipo:</span>
+        {['TODAS', 'SIMPLE', 'DOBLE', 'SUITE'].map((tipo) => (
+          <button
+            key={tipo}
+            onClick={() => setFilterType(tipo)}
+            className={`px-4 py-2 rounded-lg font-medium transition-all ${
+              filterType === tipo
+                ? 'bg-blue-600 text-white shadow-md'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            {tipo === 'TODAS' ? '📋 Todas' : tipo === 'SIMPLE' ? '🛏️ Simple' : tipo === 'DOBLE' ? '🛏️🛏️ Doble' : '👑 Suite'}
+          </button>
+        ))}
+        <span className="ml-4 self-center text-sm text-gray-500">
+          Mostrando {filteredRooms.length} de {rooms.length} habitaciones
+        </span>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {rooms.map((room) => {
+        {filteredRooms.map((room) => {
           // Lógica Visual (Rojo/Verde)
           const isOccupied = room.reserva_actual_id !== null && room.reserva_actual_id !== undefined; // Usamos el ID como indicador
           

@@ -17,6 +17,7 @@ function BookingModal({ isOpen, onClose, room, onSuccess }) {
     cliente_id: '',
     fecha_entrada: '',
     fecha_salida: '',
+    precio_noche: '',
   });
   const [newClientData, setNewClientData] = useState({
     nombre_completo: '',
@@ -29,8 +30,12 @@ function BookingModal({ isOpen, onClose, room, onSuccess }) {
   useEffect(() => {
     if (isOpen) {
       loadClientes();
+      // Inicializar precio_noche con el precio_base de la habitación
+      if (room?.precio_base) {
+        setFormData(prev => ({ ...prev, precio_noche: room.precio_base.toString() }));
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, room]);
 
   const loadClientes = async () => {
     try {
@@ -114,18 +119,25 @@ function BookingModal({ isOpen, onClose, room, onSuccess }) {
       }
 
       // Crear la reserva con el cliente (nuevo o existente)
-      const response = await api.post('/reservas', {
+      const reservaData = {
         habitacion_id: room.id,
         cliente_id: clienteId,
         fecha_entrada: formData.fecha_entrada,
         fecha_salida: formData.fecha_salida,
-      });
+      };
+      
+      // Solo incluir precio_noche si es diferente al precio base
+      if (formData.precio_noche && parseFloat(formData.precio_noche) !== room.precio_base) {
+        reservaData.precio_noche = parseFloat(formData.precio_noche);
+      }
+      
+      const response = await api.post('/reservas', reservaData);
 
       // Éxito
       alert(
         `✅ ¡Reserva Exitosa!\n\nID: ${response.data.id}\nTotal: $${response.data.precio_total.toFixed(2)}`
       );
-      setFormData({ cliente_id: '', fecha_entrada: '', fecha_salida: '' });
+      setFormData({ cliente_id: '', fecha_entrada: '', fecha_salida: '', precio_noche: '' });
       setNewClientData({ nombre_completo: '', dni: '', email: '', telefono: '' });
       setIsNewClient(false);
       onSuccess();
@@ -304,6 +316,29 @@ function BookingModal({ isOpen, onClose, room, onSuccess }) {
                 required
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
+            </div>
+
+            {/* Precio por Noche (Editable) */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Precio por Noche
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
+                <input
+                  type="number"
+                  name="precio_noche"
+                  value={formData.precio_noche}
+                  onChange={handleChange}
+                  min="0"
+                  step="0.01"
+                  placeholder={room?.precio_base?.toString() || '0'}
+                  className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                Precio base: ${room?.precio_base?.toFixed(2) || '0.00'} — Modifícalo si es necesario
+              </p>
             </div>
 
             {/* Error */}

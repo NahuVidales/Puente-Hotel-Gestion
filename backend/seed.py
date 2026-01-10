@@ -28,13 +28,13 @@ db.commit()
 print("✓ Base de datos limpiada")
 
 # ============================================================================
-# CREAR 25 HABITACIONES
+# CREAR 40 HABITACIONES
 # ============================================================================
 
-print("\n[PASO 1] Creando 25 habitaciones...")
+print("\n[PASO 1] Creando 40 habitaciones...")
 
 habitaciones = [
-    # SIMPLE (1-10): 10 habitaciones a $50-60
+    # SIMPLE (1-15): 15 habitaciones a $50-60
     Habitacion(numero="1", tipo="SIMPLE", precio_base=50.0, estado="DISPONIBLE"),
     Habitacion(numero="2", tipo="SIMPLE", precio_base=50.0, estado="DISPONIBLE"),
     Habitacion(numero="3", tipo="SIMPLE", precio_base=55.0, estado="DISPONIBLE"),
@@ -45,35 +45,50 @@ habitaciones = [
     Habitacion(numero="8", tipo="SIMPLE", precio_base=50.0, estado="DISPONIBLE"),
     Habitacion(numero="9", tipo="SIMPLE", precio_base=55.0, estado="DISPONIBLE"),
     Habitacion(numero="10", tipo="SIMPLE", precio_base=60.0, estado="DISPONIBLE"),
+    Habitacion(numero="11", tipo="SIMPLE", precio_base=50.0, estado="DISPONIBLE"),
+    Habitacion(numero="12", tipo="SIMPLE", precio_base=55.0, estado="DISPONIBLE"),
+    Habitacion(numero="13", tipo="SIMPLE", precio_base=50.0, estado="DISPONIBLE"),
+    Habitacion(numero="14", tipo="SIMPLE", precio_base=55.0, estado="DISPONIBLE"),
+    Habitacion(numero="15", tipo="SIMPLE", precio_base=60.0, estado="DISPONIBLE"),
     
-    # DOBLE (11-20): 10 habitaciones a $80-95
-    Habitacion(numero="11", tipo="DOBLE", precio_base=80.0, estado="DISPONIBLE"),
-    Habitacion(numero="12", tipo="DOBLE", precio_base=85.0, estado="DISPONIBLE"),
-    Habitacion(numero="13", tipo="DOBLE", precio_base=80.0, estado="DISPONIBLE"),
-    Habitacion(numero="14", tipo="DOBLE", precio_base=90.0, estado="DISPONIBLE"),
-    Habitacion(numero="15", tipo="DOBLE", precio_base=80.0, estado="DISPONIBLE"),
-    Habitacion(numero="16", tipo="DOBLE", precio_base=85.0, estado="DISPONIBLE"),
-    Habitacion(numero="17", tipo="DOBLE", precio_base=95.0, estado="DISPONIBLE"),
+    # DOBLE (16-30): 15 habitaciones a $80-95
+    Habitacion(numero="16", tipo="DOBLE", precio_base=80.0, estado="DISPONIBLE"),
+    Habitacion(numero="17", tipo="DOBLE", precio_base=85.0, estado="DISPONIBLE"),
     Habitacion(numero="18", tipo="DOBLE", precio_base=80.0, estado="DISPONIBLE"),
-    Habitacion(numero="19", tipo="DOBLE", precio_base=85.0, estado="DISPONIBLE"),
-    Habitacion(numero="20", tipo="DOBLE", precio_base=90.0, estado="DISPONIBLE"),
+    Habitacion(numero="19", tipo="DOBLE", precio_base=90.0, estado="DISPONIBLE"),
+    Habitacion(numero="20", tipo="DOBLE", precio_base=80.0, estado="DISPONIBLE"),
+    Habitacion(numero="21", tipo="DOBLE", precio_base=85.0, estado="DISPONIBLE"),
+    Habitacion(numero="22", tipo="DOBLE", precio_base=95.0, estado="DISPONIBLE"),
+    Habitacion(numero="23", tipo="DOBLE", precio_base=80.0, estado="DISPONIBLE"),
+    Habitacion(numero="24", tipo="DOBLE", precio_base=85.0, estado="DISPONIBLE"),
+    Habitacion(numero="25", tipo="DOBLE", precio_base=90.0, estado="DISPONIBLE"),
+    Habitacion(numero="26", tipo="DOBLE", precio_base=80.0, estado="DISPONIBLE"),
+    Habitacion(numero="27", tipo="DOBLE", precio_base=85.0, estado="DISPONIBLE"),
+    Habitacion(numero="28", tipo="DOBLE", precio_base=90.0, estado="DISPONIBLE"),
+    Habitacion(numero="29", tipo="DOBLE", precio_base=85.0, estado="DISPONIBLE"),
+    Habitacion(numero="30", tipo="DOBLE", precio_base=95.0, estado="DISPONIBLE"),
     
-    # SUITE (21-25): 5 habitaciones a $150-180
-    Habitacion(numero="21", tipo="SUITE", precio_base=150.0, estado="DISPONIBLE"),
-    Habitacion(numero="22", tipo="SUITE", precio_base=160.0, estado="DISPONIBLE"),
-    Habitacion(numero="23", tipo="SUITE", precio_base=150.0, estado="DISPONIBLE"),
-    Habitacion(numero="24", tipo="SUITE", precio_base=180.0, estado="DISPONIBLE"),
-    Habitacion(numero="25", tipo="SUITE", precio_base=170.0, estado="DISPONIBLE"),
+    # SUITE (31-40): 10 habitaciones a $150-200
+    Habitacion(numero="31", tipo="SUITE", precio_base=150.0, estado="DISPONIBLE"),
+    Habitacion(numero="32", tipo="SUITE", precio_base=160.0, estado="DISPONIBLE"),
+    Habitacion(numero="33", tipo="SUITE", precio_base=150.0, estado="DISPONIBLE"),
+    Habitacion(numero="34", tipo="SUITE", precio_base=180.0, estado="DISPONIBLE"),
+    Habitacion(numero="35", tipo="SUITE", precio_base=170.0, estado="DISPONIBLE"),
+    Habitacion(numero="36", tipo="SUITE", precio_base=160.0, estado="DISPONIBLE"),
+    Habitacion(numero="37", tipo="SUITE", precio_base=175.0, estado="DISPONIBLE"),
+    Habitacion(numero="38", tipo="SUITE", precio_base=185.0, estado="DISPONIBLE"),
+    Habitacion(numero="39", tipo="SUITE", precio_base=190.0, estado="DISPONIBLE"),
+    Habitacion(numero="40", tipo="SUITE", precio_base=200.0, estado="DISPONIBLE"),
 ]
 
 for hab in habitaciones:
     db.add(hab)
 
 db.commit()
-print("✓ 10 habitaciones creadas:")
-print("  - 3 Simples ($50-55/noche)")
-print("  - 4 Dobles ($80-90/noche)")
-print("  - 3 Suites ($150-160/noche)")
+print("✓ 40 habitaciones creadas:")
+print("  - 15 Simples ($50-60/noche)")
+print("  - 15 Dobles ($80-95/noche)")
+print("  - 10 Suites ($150-200/noche)")
 
 # ============================================================================
 # CREAR 5 CLIENTES
