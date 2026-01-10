@@ -13,8 +13,9 @@ echo ""
 echo "========================================"
 echo ""
 
-# Obtener directorio del script
+# Obtener directorio del script y del proyecto
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
 # Función para limpiar al cerrar
 cleanup() {
@@ -30,7 +31,7 @@ trap cleanup SIGINT SIGTERM
 
 # Iniciar Backend
 echo "[1/2] Iniciando Backend (FastAPI)..."
-cd "$SCRIPT_DIR/backend"
+cd "$PROJECT_DIR/backend"
 
 # Verificar si existe entorno virtual, si no crearlo
 if [ ! -d "venv" ]; then
@@ -51,7 +52,7 @@ sleep 2
 
 # Iniciar Frontend
 echo "[2/2] Iniciando Frontend (React)..."
-cd "$SCRIPT_DIR/frontend"
+cd "$PROJECT_DIR/frontend"
 
 # Verificar si node_modules existe
 if [ ! -d "node_modules" ]; then
