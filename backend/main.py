@@ -285,21 +285,10 @@ def crear_reserva(
         )
     
     # Calcular precio total
-    # Si se proporciona precio_noche personalizado, usarlo; de lo contrario, usar precio base
-    print(f"[DEBUG] precio_noche recibido: {reserva.precio_noche}, tipo: {type(reserva.precio_noche)}")
-    if reserva.precio_noche is not None:
-        # Usar precio personalizado
-        noches = (reserva.fecha_salida - reserva.fecha_entrada).days
-        precio_total = reserva.precio_noche * noches
-        print(f"[DEBUG] Usando precio personalizado: {reserva.precio_noche} x {noches} noches = {precio_total}")
-    else:
-        # Calcular con precio base de la habitación
-        precio_total = crud.calcular_precio_total(
-            db,
-            reserva.habitacion_id,
-            reserva.fecha_entrada,
-            reserva.fecha_salida
-        )
+    # Si se envió precio_noche personalizado, usarlo; sino usar precio_base de habitación
+    precio_por_noche = reserva.precio_noche if reserva.precio_noche else habitacion.precio_base
+    noches = (reserva.fecha_salida - reserva.fecha_entrada).days
+    precio_total = precio_por_noche * noches
     
     # Crear la reserva
     nueva_reserva = crud.create_reserva(db, reserva, precio_total)

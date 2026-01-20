@@ -39,7 +39,7 @@ function BookingModal({ isOpen, onClose, room, onSuccess }) {
       if (room?.precio_base) {
         setFormData(prev => ({
           ...prev,
-          precio_noche: room.precio_base
+          precio_noche: room.precio_base.toString()
         }));
       }
       // Inicializar el calendario en el mes actual
@@ -149,8 +149,13 @@ function BookingModal({ isOpen, onClose, room, onSuccess }) {
         cliente_id: clienteId,
         fecha_entrada: formData.fecha_entrada,
         fecha_salida: formData.fecha_salida,
-        precio_noche: formData.precio_noche ? parseFloat(formData.precio_noche) : null,
       };
+      
+      // Solo incluir precio_noche si es diferente al precio base
+      if (formData.precio_noche && parseFloat(formData.precio_noche) !== room.precio_base) {
+        reservaData.precio_noche = parseFloat(formData.precio_noche);
+      }
+      
       console.log('Enviando reserva con datos:', reservaData);
       const response = await api.post('/reservas', reservaData);
 
@@ -551,24 +556,26 @@ function BookingModal({ isOpen, onClose, room, onSuccess }) {
               </div>
             </div>
 
-            {/* Precio por Noche */}
+            {/* Precio por Noche (Editable) */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Precio por Noche ($)
+                Precio por Noche
               </label>
-              <input
-                type="number"
-                name="precio_noche"
-                value={formData.precio_noche}
-                onChange={handleChange}
-                placeholder={`Precio base: $${room?.precio_base || 0}`}
-                step="0.01"
-                min="0"
-                required
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
+                <input
+                  type="number"
+                  name="precio_noche"
+                  value={formData.precio_noche}
+                  onChange={handleChange}
+                  min="0"
+                  step="0.01"
+                  placeholder={room?.precio_base?.toString() || '0'}
+                  className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
               <p className="text-xs text-gray-500 mt-1">
-                Precio base de la habitación: ${room?.precio_base?.toFixed(2) || '0.00'}
+                Precio base: ${room?.precio_base?.toFixed(2) || '0.00'} — Modifícalo si es necesario
               </p>
             </div>
 

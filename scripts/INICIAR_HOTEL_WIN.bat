@@ -12,16 +12,19 @@ echo.
 echo ========================================
 echo.
 
+REM Obtener directorio del proyecto (un nivel arriba de scripts)
+set "PROJECT_DIR=%~dp0.."
+
 REM Iniciar Backend en nueva ventana
 echo [1/2] Iniciando Backend (FastAPI)...
-start "Puente Hotel - Backend" cmd /k "cd /d "%~dp0backend" && python -m uvicorn main:app --host 0.0.0.0 --port 8000"
+start "Puente Hotel - Backend" cmd /k "cd /d "%PROJECT_DIR%\backend" && python -m uvicorn main:app --host 0.0.0.0 --port 8000"
 
 REM Esperar 2 segundos para que el backend inicie
 timeout /t 2 /nobreak > nul
 
 REM Iniciar Frontend en nueva ventana
 echo [2/2] Iniciando Frontend (React)...
-start "Puente Hotel - Frontend" cmd /k "cd /d "%~dp0frontend" && npm run dev"
+start "Puente Hotel - Frontend" cmd /k "cd /d "%PROJECT_DIR%\frontend" && npm run dev"
 
 REM Esperar 3 segundos y abrir navegador
 timeout /t 3 /nobreak > nul
