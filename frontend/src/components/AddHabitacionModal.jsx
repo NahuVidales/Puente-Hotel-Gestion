@@ -94,7 +94,8 @@ function AddHabitacionModal({ isOpen, onClose, onSuccess }) {
             >
               <option value="SIMPLE">Simple</option>
               <option value="DOBLE">Doble</option>
-              <option value="SUITE">Suite</option>
+              <option value="TRIPLE">Triple</option>
+              <option value="CUADRUPLE">Cuádruple</option>
             </select>
           </div>
 

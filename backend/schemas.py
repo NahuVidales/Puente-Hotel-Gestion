@@ -13,7 +13,7 @@ from typing import Optional, List
 
 class HabitacionBase(BaseModel):
     numero: str = Field(..., min_length=1, max_length=10, description="Número de habitación")
-    tipo: str = Field(..., description="Tipo: SIMPLE, DOBLE, SUITE")
+    tipo: str = Field(..., description="Tipo: SIMPLE, DOBLE, TRIPLE, SUITE")
     precio_base: float = Field(..., gt=0, description="Precio por noche")
     estado: str = Field(default="DISPONIBLE", description="Estado actual de la habitación")
 
@@ -86,9 +86,10 @@ class ReservaBase(BaseModel):
 class ReservaCreate(ReservaBase):
     """
     IMPORTANTE: No incluye precio_total ni estado
-    El servidor calcula estos valores automáticamente
+    El servidor calcula estos valores automáticamente.
+    Si se proporciona precio_noche, se usa ese valor en lugar del precio base.
     """
-    pass
+    precio_noche: Optional[float] = Field(None, description="Precio por noche personalizado (opcional)")
 
 class ReservaUpdate(BaseModel):
     estado: Optional[str] = None

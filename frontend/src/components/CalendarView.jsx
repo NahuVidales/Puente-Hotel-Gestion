@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { AlertCircle, Calendar, Pencil, ChevronDown } from 'lucide-react';
+import { AlertCircle, Calendar, Pencil, ChevronDown, ShoppingCart, FileText, X, Printer, Plus, Minus, Package } from 'lucide-react';
 import api from '../api.js';
 import BookingModal from './BookingModal';
 
@@ -8,6 +8,7 @@ import BookingModal from './BookingModal';
  * Visualiza disponibilidad de habitaciones por fecha (Máquina del Tiempo)
  * Selecciona una fecha y ve qué habitaciones estarán libres/ocupadas/en alerta en ese día
  * Incluye la misma lógica de semáforo y desplegables que RoomsView
+ * Ahora incluye funcionalidad de ver y agregar consumos para habitaciones ocupadas
  */
 function CalendarView() {
   const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
@@ -17,6 +18,15 @@ function CalendarView() {
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
   const [expandedRoomId, setExpandedRoomId] = useState(null);
+  
+  // Estados para consumos
+  const [isConsumosModalOpen, setIsConsumosModalOpen] = useState(false);
+  const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
+  const [selectedRoomForConsumos, setSelectedRoomForConsumos] = useState(null);
+  const [productos, setProductos] = useState([]);
+  const [invoiceData, setInvoiceData] = useState(null);
+  const [extraItems, setExtraItems] = useState([]);
+  const [newItemForm, setNewItemForm] = useState({ concepto: '', cantidad: 1, precio: '' });
 
   // Cargar disponibilidad cuando cambia la fecha
   useEffect(() => {
@@ -47,6 +57,93 @@ function CalendarView() {
   const handleBooking = (room) => {
     setSelectedRoom(room);
     setIsBookingModalOpen(true);
+  };
+
+  // Cargar productos para el modal de consumos
+  const loadProductos = async () => {
+    try {
+      const response = await api.get('/productos?solo_activos=true');
+      setProductos(response.data || []);
+    } catch (err) {
+      console.error('Error al cargar productos:', err);
+    }
+  };
+
+  // Abrir modal de agregar consumos
+  const handleAddConsumos = async (habitacion) => {
+    setSelectedRoomForConsumos(habitacion);
+    await loadProductos();
+    setIsConsumosModalOpen(true);
+  };
+
+  // Agregar un consumo a la reserva
+  const handleAgregarConsumo = async (productoId) => {
+    if (!selectedRoomForConsumos?.reserva_actual_id) return;
+    try {
+      await api.post(`/reservas/${selectedRoomForConsumos.reserva_actual_id}/consumos`, {
+        producto_id: productoId,
+        cantidad: 1
+      });
+      // Mostrar confirmación temporal
+      alert('✅ Consumo agregado correctamente');
+    } catch (err) {
+      console.error('Error al agregar consumo:', err);
+      alert('❌ Error al agregar consumo');
+    }
+  };
+
+  // Abrir modal de ver consumos/comprobante
+  const handleViewConsumos = async (habitacion) => {
+    if (!habitacion.reserva_actual_id) return;
+    try {
+      const response = await api.get(`/reservas/${habitacion.reserva_actual_id}/cuenta`);
+      setInvoiceData(response.data);
+      setSelectedRoomForConsumos(habitacion);
+      setExtraItems([]);
+      setIsInvoiceModalOpen(true);
+    } catch (err) {
+      console.error('Error al cargar cuenta:', err);
+      alert('Error al cargar los datos de la cuenta');
+    }
+  };
+
+  // Funciones para el comprobante
+  const handleAddExtraItem = () => {
+    if (!newItemForm.concepto || !newItemForm.precio) return;
+    const newItem = {
+      concepto: newItemForm.concepto,
+      cantidad: parseInt(newItemForm.cantidad) || 1,
+      precio: parseFloat(newItemForm.precio) || 0
+    };
+    const newExtraItems = [...extraItems, newItem];
+    setExtraItems(newExtraItems);
+    setNewItemForm({ concepto: '', cantidad: 1, precio: '' });
+    
+    if (invoiceData) {
+      const extraTotal = newExtraItems.reduce((sum, i) => sum + (i.cantidad * i.precio), 0);
+      setInvoiceData({
+        ...invoiceData,
+        total_general: invoiceData.total_alojamiento + invoiceData.total_consumos + extraTotal
+      });
+    }
+  };
+
+  const handleRemoveExtraItem = (index) => {
+    const newExtraItems = [...extraItems];
+    newExtraItems.splice(index, 1);
+    setExtraItems(newExtraItems);
+    
+    if (invoiceData) {
+      const extraTotal = newExtraItems.reduce((sum, i) => sum + (i.cantidad * i.precio), 0);
+      setInvoiceData({
+        ...invoiceData,
+        total_general: invoiceData.total_alojamiento + invoiceData.total_consumos + extraTotal
+      });
+    }
+  };
+
+  const handlePrint = () => {
+    window.print();
   };
 
   // Formatear fecha para mostrar
@@ -297,6 +394,28 @@ function CalendarView() {
                     </button>
                   )}
 
+                  {/* Botones de Consumos - Solo para habitaciones OCUPADAS */}
+                  {hasActiveBooking && habitacion.reserva_actual_id && (
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => handleAddConsumos(habitacion)}
+                        className="flex items-center justify-center gap-1 px-2 py-2 bg-purple-600 text-white rounded text-xs font-medium hover:bg-purple-700 transition"
+                        title="Agregar consumo"
+                      >
+                        <ShoppingCart size={14} />
+                        <span>+ Consumo</span>
+                      </button>
+                      <button
+                        onClick={() => handleViewConsumos(habitacion)}
+                        className="flex items-center justify-center gap-1 px-2 py-2 bg-amber-600 text-white rounded text-xs font-medium hover:bg-amber-700 transition"
+                        title="Ver cuenta"
+                      >
+                        <FileText size={14} />
+                        <span>Ver Cuenta</span>
+                      </button>
+                    </div>
+                  )}
+
                   {/* Desplegable de Próximas Reservas */}
                   {tieneReservasFuturas && (
                     <div className="mt-3 border-t border-gray-200 pt-3">
@@ -339,6 +458,343 @@ function CalendarView() {
         room={selectedRoom}
         onSuccess={loadDisponibilidad}
       />
+
+      {/* Modal para agregar consumos */}
+      {isConsumosModalOpen && selectedRoomForConsumos && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-2xl w-full max-w-lg max-h-[80vh] overflow-auto">
+            <div className="flex items-center justify-between p-4 border-b bg-purple-50">
+              <div>
+                <h2 className="text-lg font-bold text-purple-800">
+                  🛒 Agregar Consumo
+                </h2>
+                <p className="text-sm text-purple-600">
+                  Habitación {selectedRoomForConsumos.numero} • {selectedRoomForConsumos.nombre_cliente}
+                </p>
+              </div>
+              <button
+                onClick={() => setIsConsumosModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="p-4">
+              <p className="text-sm text-gray-600 mb-4">
+                Selecciona un producto para agregarlo a la cuenta de la habitación:
+              </p>
+              
+              {productos.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <Package size={48} className="mx-auto mb-2 opacity-50" />
+                  <p>No hay productos disponibles</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  {productos.map((producto) => (
+                    <button
+                      key={producto.id}
+                      onClick={() => handleAgregarConsumo(producto.id)}
+                      className="flex flex-col items-center p-4 bg-gray-50 border border-gray-200 rounded-lg hover:bg-purple-50 hover:border-purple-300 transition"
+                    >
+                      <span className="text-2xl mb-2">📦</span>
+                      <span className="font-medium text-gray-800 text-center text-sm">
+                        {producto.nombre}
+                      </span>
+                      <span className="text-purple-600 font-bold mt-1">
+                        ${producto.precio.toFixed(2)}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3 p-4 border-t bg-gray-50">
+              <button
+                onClick={() => setIsConsumosModalOpen(false)}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800"
+              >
+                Cerrar
+              </button>
+              <button
+                onClick={() => {
+                  setIsConsumosModalOpen(false);
+                  handleViewConsumos(selectedRoomForConsumos);
+                }}
+                className="flex items-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
+              >
+                <FileText size={16} />
+                Ver Cuenta
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Comprobante/Cuenta */}
+      {isInvoiceModalOpen && invoiceData && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl max-h-[95vh] overflow-auto">
+            {/* Header del modal (no se imprime) */}
+            <div className="flex items-center justify-between p-4 border-b no-print">
+              <div>
+                <h2 className="text-lg font-semibold">📋 Cuenta de Habitación</h2>
+                <p className="text-sm text-gray-500">
+                  Habitación {selectedRoomForConsumos?.numero} • Reserva #{invoiceData.reserva_id || selectedRoomForConsumos?.reserva_actual_id}
+                </p>
+              </div>
+              <button
+                onClick={() => setIsInvoiceModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Agregar item manual (no se imprime) */}
+            <div className="p-4 bg-gray-50 border-b no-print">
+              <p className="text-sm font-medium text-gray-700 mb-2">Agregar ítem manual (Descuento, Daños, etc.)</p>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Concepto"
+                  value={newItemForm.concepto}
+                  onChange={(e) => setNewItemForm({...newItemForm, concepto: e.target.value})}
+                  className="flex-1 px-3 py-2 border rounded"
+                />
+                <input
+                  type="number"
+                  placeholder="Cant."
+                  value={newItemForm.cantidad}
+                  onChange={(e) => setNewItemForm({...newItemForm, cantidad: e.target.value})}
+                  className="w-20 px-3 py-2 border rounded"
+                  min="1"
+                />
+                <input
+                  type="number"
+                  placeholder="Precio"
+                  value={newItemForm.precio}
+                  onChange={(e) => setNewItemForm({...newItemForm, precio: e.target.value})}
+                  className="w-24 px-3 py-2 border rounded"
+                  step="0.01"
+                />
+                <button
+                  onClick={handleAddExtraItem}
+                  className="px-4 py-2 bg-yellow-500 text-white rounded hover:bg-yellow-600"
+                >
+                  <Plus size={16} />
+                </button>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">Usa precio negativo para descuentos</p>
+            </div>
+
+            {/* Contenido del comprobante - DOS COPIAS (esto se imprime) */}
+            <div id="invoice-content" className="bg-white print-area">
+              {/* Contenedor de las dos copias una arriba de otra */}
+              <div className="print-duplicado flex flex-col">
+                {/* COPIA CLIENTE */}
+                <div className="comprobante-copia p-4 flex-1 border-b-2 border-dashed border-gray-400">
+                  {/* Etiqueta de copia */}
+                  <div className="text-center mb-2">
+                    <span className="inline-block px-3 py-1 bg-blue-100 text-blue-800 text-xs font-bold rounded-full uppercase">
+                      Copia Cliente
+                    </span>
+                  </div>
+
+                  {/* Cabecera del Hotel */}
+                  <div className="text-center mb-4 border-b pb-3">
+                    <h1 className="text-lg font-bold text-gray-800">🏨 PUENTE HOTEL</h1>
+                    <p className="text-xs text-gray-400">Juan Bautista Alberdi 2350 • Tel: +5493572678258</p>
+                  </div>
+
+                  {/* Datos del comprobante */}
+                  <div className="flex justify-between mb-3 text-xs">
+                    <div>
+                      <p className="font-bold">{invoiceData.cliente_nombre}</p>
+                      <p className="text-gray-600">Hab: {invoiceData.habitacion_numero}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-bold">#{invoiceData.reserva_id || selectedRoomForConsumos?.reserva_actual_id}</p>
+                      <p className="text-gray-600">{formatDateShort(new Date().toISOString().split('T')[0])}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between mb-3 p-2 bg-gray-50 rounded text-xs">
+                    <div>
+                      <span className="text-gray-500">Check-in:</span>
+                      <p className="font-semibold">{formatDateShort(invoiceData.fecha_entrada)}</p>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-gray-500">Check-out:</span>
+                      <p className="font-semibold">{formatDateShort(invoiceData.fecha_salida)}</p>
+                    </div>
+                  </div>
+
+                  {/* Tabla de Items */}
+                  <table className="w-full mb-3 text-xs">
+                    <thead>
+                      <tr className="border-b border-gray-300">
+                        <th className="text-left py-1 font-semibold text-gray-600">Concepto</th>
+                        <th className="text-center py-1 font-semibold text-gray-600">Cant.</th>
+                        <th className="text-right py-1 font-semibold text-gray-600">Subtotal</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="border-b">
+                        <td className="py-1">🛏️ Alojamiento ({invoiceData.noches} noches)</td>
+                        <td className="text-center">{invoiceData.noches}</td>
+                        <td className="text-right font-semibold">${invoiceData.total_alojamiento?.toFixed(2)}</td>
+                      </tr>
+                      {invoiceData.consumos?.map((consumo, idx) => (
+                        <tr key={idx} className="border-b">
+                          <td className="py-1">{consumo.producto_nombre}</td>
+                          <td className="text-center">{consumo.cantidad}</td>
+                          <td className="text-right">${consumo.subtotal?.toFixed(2)}</td>
+                        </tr>
+                      ))}
+                      {extraItems.map((item, idx) => (
+                        <tr key={`extra-${idx}`} className="border-b bg-yellow-50">
+                          <td className="py-1">✏️ {item.concepto}</td>
+                          <td className="text-center">{item.cantidad}</td>
+                          <td className="text-right">${(item.cantidad * item.precio).toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+
+                  {/* Total */}
+                  <div className="border-t-2 border-gray-300 pt-2">
+                    <div className="flex justify-between items-center text-sm font-bold">
+                      <span>TOTAL:</span>
+                      <span className="text-green-700">
+                        ${(invoiceData.total_alojamiento + invoiceData.total_consumos + extraItems.reduce((sum, i) => sum + (i.cantidad * i.precio), 0)).toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Pie */}
+                  <div className="mt-3 pt-2 border-t text-center">
+                    <p className="text-xs text-gray-500">¡Gracias por su preferencia!</p>
+                    <p className="text-xs text-red-600 font-semibold mt-1">*No válido como factura</p>
+                  </div>
+                </div>
+
+                {/* COPIA HOTEL */}
+                <div className="comprobante-copia p-4 flex-1">
+                  {/* Etiqueta de copia */}
+                  <div className="text-center mb-2">
+                    <span className="inline-block px-3 py-1 bg-green-100 text-green-800 text-xs font-bold rounded-full uppercase">
+                      Copia Hotel
+                    </span>
+                  </div>
+
+                  {/* Cabecera del Hotel */}
+                  <div className="text-center mb-4 border-b pb-3">
+                    <h1 className="text-lg font-bold text-gray-800">🏨 PUENTE HOTEL</h1>
+                    <p className="text-xs text-gray-400">Juan Bautista Alberdi 2350 • Tel: +5493572678258</p>
+                  </div>
+
+                  {/* Datos del comprobante */}
+                  <div className="flex justify-between mb-3 text-xs">
+                    <div>
+                      <p className="font-bold">{invoiceData.cliente_nombre}</p>
+                      <p className="text-gray-600">Hab: {invoiceData.habitacion_numero}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-bold">#{invoiceData.reserva_id || selectedRoomForConsumos?.reserva_actual_id}</p>
+                      <p className="text-gray-600">{formatDateShort(new Date().toISOString().split('T')[0])}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between mb-3 p-2 bg-gray-50 rounded text-xs">
+                    <div>
+                      <span className="text-gray-500">Check-in:</span>
+                      <p className="font-semibold">{formatDateShort(invoiceData.fecha_entrada)}</p>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-gray-500">Check-out:</span>
+                      <p className="font-semibold">{formatDateShort(invoiceData.fecha_salida)}</p>
+                    </div>
+                  </div>
+
+                  {/* Tabla de Items */}
+                  <table className="w-full mb-3 text-xs">
+                    <thead>
+                      <tr className="border-b border-gray-300">
+                        <th className="text-left py-1 font-semibold text-gray-600">Concepto</th>
+                        <th className="text-center py-1 font-semibold text-gray-600">Cant.</th>
+                        <th className="text-right py-1 font-semibold text-gray-600">Subtotal</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="border-b">
+                        <td className="py-1">🛏️ Alojamiento ({invoiceData.noches} noches)</td>
+                        <td className="text-center">{invoiceData.noches}</td>
+                        <td className="text-right font-semibold">${invoiceData.total_alojamiento?.toFixed(2)}</td>
+                      </tr>
+                      {invoiceData.consumos?.map((consumo, idx) => (
+                        <tr key={idx} className="border-b">
+                          <td className="py-1">{consumo.producto_nombre}</td>
+                          <td className="text-center">{consumo.cantidad}</td>
+                          <td className="text-right">${consumo.subtotal?.toFixed(2)}</td>
+                        </tr>
+                      ))}
+                      {extraItems.map((item, idx) => (
+                        <tr key={`extra-${idx}`} className="border-b bg-yellow-50">
+                          <td className="py-1">✏️ {item.concepto}</td>
+                          <td className="text-center">{item.cantidad}</td>
+                          <td className="text-right">${(item.cantidad * item.precio).toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+
+                  {/* Total */}
+                  <div className="border-t-2 border-gray-300 pt-2">
+                    <div className="flex justify-between items-center text-sm font-bold">
+                      <span>TOTAL:</span>
+                      <span className="text-green-700">
+                        ${(invoiceData.total_alojamiento + invoiceData.total_consumos + extraItems.reduce((sum, i) => sum + (i.cantidad * i.precio), 0)).toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Pie */}
+                  <div className="mt-3 pt-2 border-t text-center">
+                    <p className="text-xs text-gray-500">¡Gracias por su preferencia!</p>
+                    <p className="text-xs text-red-600 font-semibold mt-1">*No válido como factura</p>
+                  </div>
+
+                  {/* Campo firma solo en copia hotel */}
+                  <div className="mt-4 pt-3 border-t">
+                    <div className="border-b border-gray-400 w-full mb-1" style={{height: '30px'}}></div>
+                    <p className="text-xs text-gray-500 text-center">Firma del huésped</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Botones del modal (no se imprimen) */}
+            <div className="flex justify-end gap-3 p-4 border-t bg-gray-50 no-print">
+              <button
+                onClick={() => setIsInvoiceModalOpen(false)}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800"
+              >
+                Cerrar
+              </button>
+              <button
+                onClick={handlePrint}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                <Printer size={16} />
+                Imprimir / Guardar PDF
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

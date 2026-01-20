@@ -312,7 +312,7 @@ function HistoryView() {
                   {/* Cabecera del Hotel */}
                   <div className="text-center mb-4 border-b pb-3">
                     <h1 className="text-lg font-bold text-gray-800">🏨 PUENTE HOTEL</h1>
-                    <p className="text-xs text-gray-400">Av. Principal #123 • Tel: (555) 123-4567</p>
+                    <p className="text-xs text-gray-400">Juan Bautista Alberdi 2350 • Tel: +5493572678258</p>
                   </div>
 
                   {/* Datos del comprobante */}
@@ -399,7 +399,7 @@ function HistoryView() {
                   {/* Cabecera del Hotel */}
                   <div className="text-center mb-4 border-b pb-3">
                     <h1 className="text-lg font-bold text-gray-800">🏨 PUENTE HOTEL</h1>
-                    <p className="text-xs text-gray-400">Av. Principal #123 • Tel: (555) 123-4567</p>
+                    <p className="text-xs text-gray-400">Juan Bautista Alberdi 2350 • Tel: +5493572678258</p>
                   </div>
 
                   {/* Datos del comprobante */}

@@ -475,13 +475,18 @@ def checkout_reserva(db: Session, reserva_id: int):
     
     # Si checkout es antes de la fecha de salida prevista, ajustar
     if reserva.fecha_salida > hoy:
+        # Calcular el precio por noche ORIGINAL (con el que se registró la reserva)
+        noches_originales = (reserva.fecha_salida - reserva.fecha_entrada).days
+        if noches_originales < 1:
+            noches_originales = 1
+        precio_noche_original = reserva.precio_total / noches_originales
+        
         reserva.fecha_salida = hoy
-        # Recalcular precio si es checkout anticipado
+        # Recalcular precio con el precio por noche ORIGINAL
         noches = (hoy - reserva.fecha_entrada).days
         if noches < 1:
             noches = 1
-        precio_noche = reserva.habitacion.precio_base if reserva.habitacion else 0
-        reserva.precio_total = noches * precio_noche
+        reserva.precio_total = noches * precio_noche_original
     
     # Cambiar estado a FINALIZADA
     reserva.estado = EstadoReserva.FINALIZADA
@@ -848,8 +853,10 @@ def get_cuenta_reserva(db: Session, reserva_id: int):
         noches = 1
     
     habitacion = reserva.habitacion
-    precio_noche = habitacion.precio_base if habitacion else 0
-    total_alojamiento = precio_noche * noches
+    # Usar el precio_total de la reserva (precio con el que se registró)
+    # en lugar del precio_base actual de la habitación
+    total_alojamiento = reserva.precio_total
+    precio_noche = total_alojamiento / noches if noches > 0 else total_alojamiento
     
     consumos = db.query(Consumo).filter(Consumo.reserva_id == reserva_id).all()
     

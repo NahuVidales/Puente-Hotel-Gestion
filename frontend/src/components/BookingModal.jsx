@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { X, AlertCircle } from 'lucide-react';
+import { X, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import api from '../api.js';
 
 /**
  * BookingModal Component
  * Modal inteligente para crear reservas
  * Carga clientes dinámicamente y valida disponibilidad
+ * Muestra calendario con días ocupados marcados en rojo
  */
 function BookingModal({ isOpen, onClose, room, onSuccess }) {
   const [clientes, setClientes] = useState([]);
@@ -13,10 +14,12 @@ function BookingModal({ isOpen, onClose, room, onSuccess }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [isNewClient, setIsNewClient] = useState(false);
+  const [reservasHabitacion, setReservasHabitacion] = useState([]);
   const [formData, setFormData] = useState({
     cliente_id: '',
     fecha_entrada: '',
     fecha_salida: '',
+    precio_noche: '',
   });
   const [newClientData, setNewClientData] = useState({
     nombre_completo: '',
@@ -24,13 +27,40 @@ function BookingModal({ isOpen, onClose, room, onSuccess }) {
     email: '',
     telefono: '',
   });
+  // Estado para el calendario visual
+  const [calendarMonth, setCalendarMonth] = useState(new Date());
 
-  // Cargar clientes al abrir el modal
+  // Cargar clientes al abrir el modal y establecer precio por defecto
   useEffect(() => {
     if (isOpen) {
       loadClientes();
+      loadReservasHabitacion();
+      // Establecer precio_noche con el precio base de la habitación
+      if (room?.precio_base) {
+        setFormData(prev => ({
+          ...prev,
+          precio_noche: room.precio_base
+        }));
+      }
+      // Inicializar el calendario en el mes actual
+      setCalendarMonth(new Date());
     }
-  }, [isOpen]);
+  }, [isOpen, room]);
+
+  // Cargar reservas de la habitación
+  const loadReservasHabitacion = async () => {
+    if (!room?.id) return;
+    try {
+      const response = await api.get(`/reservas?habitacion_id=${room.id}`);
+      console.log('BookingModal - Reservas de habitación:', response.data);
+      const reservas = Array.isArray(response.data) ? response.data : [];
+      console.log('BookingModal - Reservas filtradas (estados):', reservas.map(r => ({ id: r.id, estado: r.estado, entrada: r.fecha_entrada, salida: r.fecha_salida })));
+      setReservasHabitacion(reservas);
+    } catch (err) {
+      console.error('Error al cargar reservas de habitación:', err);
+      setReservasHabitacion([]);
+    }
+  };
 
   const loadClientes = async () => {
     try {
@@ -114,18 +144,21 @@ function BookingModal({ isOpen, onClose, room, onSuccess }) {
       }
 
       // Crear la reserva con el cliente (nuevo o existente)
-      const response = await api.post('/reservas', {
+      const reservaData = {
         habitacion_id: room.id,
         cliente_id: clienteId,
         fecha_entrada: formData.fecha_entrada,
         fecha_salida: formData.fecha_salida,
-      });
+        precio_noche: formData.precio_noche ? parseFloat(formData.precio_noche) : null,
+      };
+      console.log('Enviando reserva con datos:', reservaData);
+      const response = await api.post('/reservas', reservaData);
 
       // Éxito
       alert(
         `✅ ¡Reserva Exitosa!\n\nID: ${response.data.id}\nTotal: $${response.data.precio_total.toFixed(2)}`
       );
-      setFormData({ cliente_id: '', fecha_entrada: '', fecha_salida: '' });
+      setFormData({ cliente_id: '', fecha_entrada: '', fecha_salida: '', precio_noche: '' });
       setNewClientData({ nombre_completo: '', dni: '', email: '', telefono: '' });
       setIsNewClient(false);
       onSuccess();
@@ -142,11 +175,138 @@ function BookingModal({ isOpen, onClose, room, onSuccess }) {
     }
   };
 
+  // Verificar si una fecha está ocupada por alguna reserva
+  const isDateOccupied = (date) => {
+    const checkDate = new Date(date);
+    checkDate.setHours(0, 0, 0, 0);
+    
+    return reservasHabitacion.some(reserva => {
+      // Solo considerar reservas activas (PENDIENTE o CHECKIN)
+      // PENDIENTE = reserva confirmada esperando check-in
+      // CHECKIN = huésped actualmente alojado
+      if (reserva.estado !== 'PENDIENTE' && reserva.estado !== 'CHECKIN') {
+        return false;
+      }
+      const entrada = new Date(reserva.fecha_entrada + 'T00:00:00');
+      const salida = new Date(reserva.fecha_salida + 'T00:00:00');
+      entrada.setHours(0, 0, 0, 0);
+      salida.setHours(0, 0, 0, 0);
+      // El día de salida no cuenta como ocupado (checkout)
+      return checkDate >= entrada && checkDate < salida;
+    });
+  };
+
+  // Obtener los días del mes para el calendario
+  const getCalendarDays = () => {
+    const year = calendarMonth.getFullYear();
+    const month = calendarMonth.getMonth();
+    
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    
+    const days = [];
+    const startPadding = firstDay.getDay(); // Días de padding al inicio
+    
+    // Días vacíos al inicio
+    for (let i = 0; i < startPadding; i++) {
+      days.push(null);
+    }
+    
+    // Días del mes
+    for (let d = 1; d <= lastDay.getDate(); d++) {
+      days.push(new Date(year, month, d));
+    }
+    
+    return days;
+  };
+
+  // Navegar meses en el calendario
+  const prevMonth = () => {
+    setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1));
+  };
+
+  const nextMonth = () => {
+    setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1));
+  };
+
+  // Formatear fecha para mostrar
+  const formatMonthYear = (date) => {
+    return date.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+  };
+
+  // Manejar click en día del calendario
+  const handleDayClick = (date) => {
+    if (!date || isDateOccupied(date)) return;
+    
+    const dateStr = date.toISOString().split('T')[0];
+    
+    if (!formData.fecha_entrada || (formData.fecha_entrada && formData.fecha_salida)) {
+      // Empezar nueva selección
+      setFormData(prev => ({
+        ...prev,
+        fecha_entrada: dateStr,
+        fecha_salida: ''
+      }));
+    } else {
+      // Ya hay fecha de entrada, establecer salida
+      if (new Date(dateStr) > new Date(formData.fecha_entrada)) {
+        // Verificar que no haya días ocupados en el rango
+        const start = new Date(formData.fecha_entrada);
+        const end = new Date(dateStr);
+        let hasOccupiedInRange = false;
+        
+        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+          if (isDateOccupied(d)) {
+            hasOccupiedInRange = true;
+            break;
+          }
+        }
+        
+        if (hasOccupiedInRange) {
+          setError('Hay días ocupados en el rango seleccionado');
+          return;
+        }
+        
+        setFormData(prev => ({
+          ...prev,
+          fecha_salida: dateStr
+        }));
+        setError(null);
+      } else {
+        // Si la fecha es anterior, reiniciar con esta como entrada
+        setFormData(prev => ({
+          ...prev,
+          fecha_entrada: dateStr,
+          fecha_salida: ''
+        }));
+      }
+    }
+  };
+
+  // Verificar si un día está en el rango seleccionado
+  const isInSelectedRange = (date) => {
+    if (!date || !formData.fecha_entrada) return false;
+    const checkDate = new Date(date);
+    checkDate.setHours(0, 0, 0, 0);
+    
+    const entrada = new Date(formData.fecha_entrada + 'T00:00:00');
+    entrada.setHours(0, 0, 0, 0);
+    
+    if (!formData.fecha_salida) {
+      return checkDate.getTime() === entrada.getTime();
+    }
+    
+    const salida = new Date(formData.fecha_salida + 'T00:00:00');
+    salida.setHours(0, 0, 0, 0);
+    
+    return checkDate >= entrada && checkDate <= salida;
+  };
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 overflow-y-auto py-4">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg p-6 max-h-[95vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-xl font-bold text-gray-900">
@@ -304,6 +464,112 @@ function BookingModal({ isOpen, onClose, room, onSuccess }) {
                 required
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
+            </div>
+
+            {/* Calendario Visual con Días Ocupados */}
+            <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+              <div className="flex items-center justify-between mb-3">
+                <button
+                  type="button"
+                  onClick={prevMonth}
+                  className="p-1 hover:bg-gray-200 rounded transition"
+                >
+                  <ChevronLeft size={20} />
+                </button>
+                <span className="font-medium text-gray-800 capitalize">
+                  {formatMonthYear(calendarMonth)}
+                </span>
+                <button
+                  type="button"
+                  onClick={nextMonth}
+                  className="p-1 hover:bg-gray-200 rounded transition"
+                >
+                  <ChevronRight size={20} />
+                </button>
+              </div>
+              
+              {/* Días de la semana */}
+              <div className="grid grid-cols-7 gap-1 mb-1">
+                {['Do', 'Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa'].map(day => (
+                  <div key={day} className="text-center text-xs font-medium text-gray-500 py-1">
+                    {day}
+                  </div>
+                ))}
+              </div>
+              
+              {/* Días del mes */}
+              <div className="grid grid-cols-7 gap-1">
+                {getCalendarDays().map((date, index) => {
+                  if (!date) {
+                    return <div key={`empty-${index}`} className="h-8" />;
+                  }
+                  
+                  const isOccupied = isDateOccupied(date);
+                  const isSelected = isInSelectedRange(date);
+                  const isToday = new Date().toDateString() === date.toDateString();
+                  const isPast = date < new Date(new Date().setHours(0, 0, 0, 0));
+                  
+                  return (
+                    <button
+                      key={date.toISOString()}
+                      type="button"
+                      onClick={() => handleDayClick(date)}
+                      disabled={isOccupied || isPast}
+                      className={`h-8 w-full text-xs rounded transition font-medium
+                        ${isOccupied 
+                          ? 'bg-red-500 text-white cursor-not-allowed' 
+                          : isPast
+                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                            : isSelected
+                              ? 'bg-blue-500 text-white'
+                              : isToday
+                                ? 'bg-blue-100 text-blue-800 hover:bg-blue-200'
+                                : 'hover:bg-gray-200 text-gray-700'
+                        }`}
+                      title={isOccupied ? 'Día ocupado' : isPast ? 'Fecha pasada' : 'Disponible'}
+                    >
+                      {date.getDate()}
+                    </button>
+                  );
+                })}
+              </div>
+              
+              {/* Leyenda */}
+              <div className="flex items-center gap-4 mt-3 pt-2 border-t border-gray-200">
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 bg-red-500 rounded"></div>
+                  <span className="text-xs text-gray-600">Ocupado</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 bg-blue-500 rounded"></div>
+                  <span className="text-xs text-gray-600">Seleccionado</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 bg-gray-100 border border-gray-300 rounded"></div>
+                  <span className="text-xs text-gray-600">Pasado</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Precio por Noche */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Precio por Noche ($)
+              </label>
+              <input
+                type="number"
+                name="precio_noche"
+                value={formData.precio_noche}
+                onChange={handleChange}
+                placeholder={`Precio base: $${room?.precio_base || 0}`}
+                step="0.01"
+                min="0"
+                required
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Precio base de la habitación: ${room?.precio_base?.toFixed(2) || '0.00'}
+              </p>
             </div>
 
             {/* Error */}
