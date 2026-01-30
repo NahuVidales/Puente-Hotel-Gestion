@@ -74,16 +74,16 @@ function ProductsView() {
     setSubmitting(true);
     setSubmitError(null);
 
-    // Validaciones
-    if (!formData.nombre || !formData.precio) {
+    // Validaciones: nombre obligatorio y precio no vacío (aceptamos negativo)
+    if (!formData.nombre || formData.precio === '') {
       setSubmitError('Por favor completa todos los campos');
       setSubmitting(false);
       return;
     }
 
     const precio = parseFloat(formData.precio);
-    if (isNaN(precio) || precio <= 0) {
-      setSubmitError('El precio debe ser un número mayor a 0');
+    if (isNaN(precio)) {
+      setSubmitError('El precio debe ser un número válido');
       setSubmitting(false);
       return;
     }
@@ -312,7 +312,6 @@ function ProductsView() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="0.00"
                   step="0.01"
-                  min="0.01"
                   required
                 />
               </div>

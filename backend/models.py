@@ -19,12 +19,15 @@ Base = declarative_base()
 class TipoHabitacion(PyEnum):
     SIMPLE = "SIMPLE"
     DOBLE = "DOBLE"
+    TRIPLE = "TRIPLE"
     SUITE = "SUITE"
+
 
 class EstadoHabitacion(PyEnum):
     DISPONIBLE = "DISPONIBLE"
     OCUPADA = "OCUPADA"
     LIMPIEZA = "LIMPIEZA"
+    RESERVADA = "RESERVADA"
     MANTENIMIENTO = "MANTENIMIENTO"
 
 class EstadoReserva(PyEnum):

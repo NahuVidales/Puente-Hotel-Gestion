@@ -138,7 +138,8 @@ class ReservaHistorialResponse(BaseModel):
 
 class ProductoBase(BaseModel):
     nombre: str = Field(..., min_length=1, max_length=100, description="Nombre del producto")
-    precio: float = Field(..., gt=0, description="Precio unitario")
+    # Permitir precios negativos (ej: cargos/ajustes negativos)
+    precio: float = Field(..., description="Precio unitario")
     activo: Optional[bool] = True
 
 class ProductoCreate(ProductoBase):
