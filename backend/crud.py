@@ -305,6 +305,28 @@ def check_availability(
     # Si NO hay solapamiento, la habitación está disponible
     return reserva_solapada is None
 
+def check_availability_excluding_reserva(
+    db: Session,
+    habitacion_id: int,
+    fecha_entrada: date,
+    fecha_salida: date,
+    reserva_id_excluir: int
+) -> bool:
+    """
+    Verifica disponibilidad excluyendo una reserva específica.
+    Útil para editar una reserva existente sin que ella misma cause conflicto.
+    """
+    reserva_solapada = db.query(Reserva).filter(
+        Reserva.habitacion_id == habitacion_id,
+        Reserva.id != reserva_id_excluir,  # Excluir la reserva que estamos editando
+        Reserva.estado != EstadoReserva.CANCELADA,
+        Reserva.estado != EstadoReserva.FINALIZADA,
+        Reserva.fecha_entrada < fecha_salida,
+        Reserva.fecha_salida > fecha_entrada
+    ).first()
+    
+    return reserva_solapada is None
+
 def get_habitaciones_disponibles(
     db: Session,
     fecha_entrada: date,
@@ -563,6 +585,50 @@ def delete_reserva(db: Session, reserva_id: int) -> bool:
     db.commit()
     return True
 
+def update_reserva(db: Session, reserva_id: int, datos) -> Reserva:
+    """
+    Actualiza una reserva existente.
+    
+    Args:
+        db: Sesión de base de datos
+        reserva_id: ID de la reserva a actualizar
+        datos: Objeto con los campos a actualizar
+    
+    Returns:
+        Reserva actualizada
+    """
+    reserva = get_reserva(db, reserva_id)
+    if not reserva:
+        return None
+    
+    # Actualizar campos si se proporcionan
+    if datos.fecha_entrada is not None:
+        reserva.fecha_entrada = datos.fecha_entrada
+    
+    if datos.fecha_salida is not None:
+        reserva.fecha_salida = datos.fecha_salida
+    
+    if datos.habitacion_id is not None:
+        reserva.habitacion_id = datos.habitacion_id
+    
+    if datos.precio_total is not None:
+        reserva.precio_total = datos.precio_total
+    
+    if datos.estado is not None:
+        # Convertir string a enum
+        estado_map = {
+            'PENDIENTE': EstadoReserva.PENDIENTE,
+            'CHECKIN': EstadoReserva.CHECKIN,
+            'FINALIZADA': EstadoReserva.FINALIZADA,
+            'CANCELADA': EstadoReserva.CANCELADA
+        }
+        if datos.estado.upper() in estado_map:
+            reserva.estado = estado_map[datos.estado.upper()]
+    
+    db.commit()
+    db.refresh(reserva)
+    return reserva
+
 def cancelar_reserva(db: Session, reserva_id: int) -> dict:
     """
     Cancela una reserva (cambia estado a CANCELADA).
@@ -742,6 +808,8 @@ def get_habitaciones_por_fecha(db: Session, fecha_objetivo: date):
             "reserva_actual_inicio": None,
             "reserva_actual_fin": None,
             "nombre_cliente": None,
+            "precio_total_reserva": None,
+            "consumos_reserva": [],
             "proximas_reservas": []
         }
         
@@ -762,6 +830,18 @@ def get_habitaciones_por_fecha(db: Session, fecha_objetivo: date):
             hab_dict["reserva_actual_id"] = reserva_en_fecha.id
             hab_dict["reserva_actual_inicio"] = str(reserva_en_fecha.fecha_entrada)
             hab_dict["reserva_actual_fin"] = str(reserva_en_fecha.fecha_salida)
+            hab_dict["precio_total_reserva"] = reserva_en_fecha.precio_total
+            # Agregar consumos de la reserva
+            hab_dict["consumos_reserva"] = [
+                {
+                    "id": c.id,
+                    "producto_id": c.producto_id,
+                    "cantidad": c.cantidad,
+                    "precio_unitario": c.precio_unitario,
+                    "producto_nombre": c.producto.nombre if c.producto else None
+                }
+                for c in reserva_en_fecha.consumos
+            ] if reserva_en_fecha.consumos else []
             if reserva_en_fecha.cliente:
                 hab_dict["nombre_cliente"] = reserva_en_fecha.cliente.nombre_completo
             print(f"[DEBUG] Habitación {habitacion.numero} en {fecha_objetivo}: OCUPADA ({reserva_en_fecha.cliente.nombre_completo if reserva_en_fecha.cliente else 'Desconocido'})")
@@ -920,29 +1000,8 @@ def get_llegadas_hoy(db: Session) -> list:
         Reserva.estado == EstadoReserva.PENDIENTE
     ).all()
     
-    resultado = []
-    for reserva in reservas:
-        habitacion = reserva.habitacion
-        cliente = reserva.cliente
-        resultado.append({
-            "id": reserva.id,
-            "cliente_id": reserva.cliente_id,
-            "cliente_nombre": cliente.nombre_completo if cliente else "N/A",
-            "cliente_dni": cliente.dni if cliente else "N/A",
-            "cliente_email": cliente.email if cliente else "",
-            "cliente_telefono": cliente.telefono if cliente else "",
-            "habitacion_id": reserva.habitacion_id,
-            "habitacion_numero": habitacion.numero if habitacion else "N/A",
-            "habitacion_tipo": habitacion.tipo.value if habitacion else "N/A",
-            "habitacion_estado": habitacion.estado.value if habitacion else "N/A",
-            "fecha_entrada": reserva.fecha_entrada,
-            "fecha_salida": reserva.fecha_salida,
-            "precio_total": reserva.precio_total,
-            "noches": (reserva.fecha_salida - reserva.fecha_entrada).days,
-            "estado": reserva.estado.value
-        })
-    
-    return resultado
+    # Usar el helper que verifica disponibilidad real
+    return [_reserva_a_dict_checkin(r, db) for r in reservas]
 
 def buscar_reservas_checkin(db: Session, query: str) -> list:
     """
@@ -961,7 +1020,7 @@ def buscar_reservas_checkin(db: Session, query: str) -> list:
             Reserva.estado == EstadoReserva.PENDIENTE
         ).first()
         if reserva:
-            return [_reserva_a_dict_checkin(reserva)]
+            return [_reserva_a_dict_checkin(reserva, db)]
     except ValueError:
         pass
     
@@ -972,12 +1031,47 @@ def buscar_reservas_checkin(db: Session, query: str) -> list:
         (Cliente.dni.ilike(f"%{query}%"))
     ).all()
     
-    return [_reserva_a_dict_checkin(r) for r in reservas]
+    return [_reserva_a_dict_checkin(r, db) for r in reservas]
 
-def _reserva_a_dict_checkin(reserva: Reserva) -> dict:
+def _reserva_a_dict_checkin(reserva: Reserva, db: Session = None) -> dict:
     """Helper para convertir reserva a diccionario para check-in"""
+    from datetime import date as date_class
+    
     habitacion = reserva.habitacion
     cliente = reserva.cliente
+    
+    # Determinar el estado real de disponibilidad para check-in
+    # El estado físico de la habitación puede ser OCUPADA, pero si es por la misma reserva
+    # o si no hay otra reserva activa, se puede hacer check-in
+    estado_habitacion = habitacion.estado.value if habitacion else "N/A"
+    puede_checkin = True
+    motivo_bloqueo = None
+    
+    if habitacion:
+        # Si la habitación está en MANTENIMIENTO o LIMPIEZA, bloquear
+        if habitacion.estado in [EstadoHabitacion.MANTENIMIENTO, EstadoHabitacion.LIMPIEZA]:
+            puede_checkin = False
+            motivo_bloqueo = habitacion.estado.value
+        # Si está OCUPADA, verificar si hay OTRA reserva activa (en CHECKIN) para HOY
+        elif habitacion.estado == EstadoHabitacion.OCUPADA and db:
+            hoy = date_class.today()
+            # Buscar si hay otra reserva en CHECKIN para esta habitación
+            otra_reserva_activa = db.query(Reserva).filter(
+                Reserva.habitacion_id == habitacion.id,
+                Reserva.id != reserva.id,  # Excluir la reserva actual
+                Reserva.estado == EstadoReserva.CHECKIN,
+                Reserva.fecha_salida > hoy  # Que aún no haya terminado
+            ).first()
+            
+            if otra_reserva_activa:
+                puede_checkin = False
+                motivo_bloqueo = f"OCUPADA por {otra_reserva_activa.cliente.nombre_completo if otra_reserva_activa.cliente else 'otro huésped'}"
+                estado_habitacion = "OCUPADA_OTRA"
+            else:
+                # La habitación está "ocupada" pero no hay otra reserva activa real
+                # Esto puede pasar si el estado no se actualizó correctamente
+                estado_habitacion = "DISPONIBLE"
+    
     return {
         "id": reserva.id,
         "cliente_id": reserva.cliente_id,
@@ -988,7 +1082,9 @@ def _reserva_a_dict_checkin(reserva: Reserva) -> dict:
         "habitacion_id": reserva.habitacion_id,
         "habitacion_numero": habitacion.numero if habitacion else "N/A",
         "habitacion_tipo": habitacion.tipo.value if habitacion else "N/A",
-        "habitacion_estado": habitacion.estado.value if habitacion else "N/A",
+        "habitacion_estado": estado_habitacion,
+        "puede_checkin": puede_checkin,
+        "motivo_bloqueo": motivo_bloqueo,
         "fecha_entrada": reserva.fecha_entrada,
         "fecha_salida": reserva.fecha_salida,
         "precio_total": reserva.precio_total,

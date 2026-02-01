@@ -91,6 +91,11 @@ class ReservaCreate(ReservaBase):
     precio_noche: Optional[float] = Field(None, gt=0, description="Precio por noche personalizado (opcional)")
 
 class ReservaUpdate(BaseModel):
+    """Schema para actualizar una reserva existente"""
+    fecha_entrada: Optional[date] = None
+    fecha_salida: Optional[date] = None
+    habitacion_id: Optional[int] = None
+    precio_total: Optional[float] = None
     estado: Optional[str] = None
 
 # Schema embebido para cliente en respuesta de reserva

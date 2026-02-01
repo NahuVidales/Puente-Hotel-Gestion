@@ -394,6 +394,54 @@ def cancelar_reserva(reserva_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Reserva no encontrada o no se puede cancelar")
     return resultado
 
+@app.put("/reservas/{reserva_id}")
+def actualizar_reserva(
+    reserva_id: int,
+    datos: schemas.ReservaUpdate,
+    db: Session = Depends(get_db)
+):
+    """
+    PUT /reservas/{reserva_id}
+    Actualiza una reserva existente (fechas, habitación, precio, estado)
+    """
+    # Verificar que la reserva existe
+    reserva = crud.get_reserva(db, reserva_id)
+    if not reserva:
+        raise HTTPException(status_code=404, detail="Reserva no encontrada")
+    
+    # Verificar disponibilidad si cambian fechas o habitación
+    nueva_habitacion_id = datos.habitacion_id or reserva.habitacion_id
+    nueva_fecha_entrada = datos.fecha_entrada or reserva.fecha_entrada
+    nueva_fecha_salida = datos.fecha_salida or reserva.fecha_salida
+    
+    # Validar fechas
+    if nueva_fecha_salida <= nueva_fecha_entrada:
+        raise HTTPException(
+            status_code=400,
+            detail="La fecha de salida debe ser posterior a la de entrada"
+        )
+    
+    # Si cambian fechas o habitación, verificar disponibilidad
+    if (datos.habitacion_id and datos.habitacion_id != reserva.habitacion_id) or \
+       (datos.fecha_entrada and datos.fecha_entrada != reserva.fecha_entrada) or \
+       (datos.fecha_salida and datos.fecha_salida != reserva.fecha_salida):
+        
+        disponible = crud.check_availability_excluding_reserva(
+            db, nueva_habitacion_id, nueva_fecha_entrada, nueva_fecha_salida, reserva_id
+        )
+        if not disponible:
+            raise HTTPException(
+                status_code=409,
+                detail="La habitación no está disponible en esas fechas"
+            )
+    
+    # Actualizar la reserva
+    reserva_actualizada = crud.update_reserva(db, reserva_id, datos)
+    return {
+        "mensaje": "Reserva actualizada correctamente",
+        "reserva": reserva_actualizada
+    }
+
 @app.put("/reservas/{reserva_id}/checkout")
 def checkout_reserva(reserva_id: int, db: Session = Depends(get_db)):
     """

@@ -249,6 +249,45 @@ function CalendarView() {
     return date.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
   };
 
+  // Determinar estado de pago basado en consumos de la reserva
+  const getEstadoPago = (habitacion) => {
+    if (!habitacion.reserva_actual_id) {
+      return null; // No hay reserva activa
+    }
+    
+    const precioReserva = habitacion.precio_total_reserva || 0;
+    const consumos = habitacion.consumos_reserva || [];
+    
+    // Calcular consumos positivos (productos, minibar, etc.)
+    const totalConsumosPositivos = consumos
+      .filter(c => c.precio_unitario > 0)
+      .reduce((sum, c) => sum + (c.precio_unitario * c.cantidad), 0);
+    
+    // Calcular pagos (consumos negativos)
+    const totalPagado = consumos
+      .filter(c => c.precio_unitario < 0)
+      .reduce((sum, c) => sum + Math.abs(c.precio_unitario * c.cantidad), 0);
+    
+    // Total a pagar = precio reserva + consumos extras
+    const totalAPagar = precioReserva + totalConsumosPositivos;
+    
+    // Saldo pendiente
+    const saldo = totalAPagar - totalPagado;
+    
+    // Si no hay ningún pago registrado
+    if (totalPagado === 0) {
+      return { estado: 'sin_pago', texto: 'Sin pago', badge: 'bg-gray-200 text-gray-700' };
+    }
+    
+    // Si el saldo es 0 o menor = Pagado
+    if (saldo <= 0) {
+      return { estado: 'pagado', texto: '✅ Pagado', badge: 'bg-green-200 text-green-800' };
+    }
+    
+    // Tiene pagos pero hay saldo pendiente
+    return { estado: 'senado', texto: `💰 Señado (Debe: $${saldo.toFixed(0)})`, badge: 'bg-yellow-200 text-yellow-800' };
+  };
+
   return (
     <div className="max-w-7xl">
       {/* Header con selector de fecha */}
@@ -420,12 +459,18 @@ function CalendarView() {
                     )}
                   </div>
 
-                  {/* Indicador de Estado */}
-                  <div className="flex items-center gap-2 mb-3">
+                  {/* Indicador de Estado y Pago */}
+                  <div className="flex items-center gap-2 mb-3 flex-wrap">
                     <div className={`h-3 w-3 rounded-full ${indicatorColor}`}></div>
                     <span className={`text-xs font-semibold px-2 py-1 rounded ${badgeColor}`}>
                       {statusText}
                     </span>
+                    {/* Badge de Estado de Pago - Solo si hay reserva activa */}
+                    {getEstadoPago(habitacion) && (
+                      <span className={`text-xs font-semibold px-2 py-1 rounded ${getEstadoPago(habitacion).badge}`}>
+                        {getEstadoPago(habitacion).texto}
+                      </span>
+                    )}
                   </div>
 
                   {/* Información de Ocupación en esa Fecha */}

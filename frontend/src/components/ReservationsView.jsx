@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { AlertCircle, Trash2, Calendar, User, Home, ShoppingCart, LogOut, X, DollarSign } from 'lucide-react';
+import { AlertCircle, Trash2, Calendar, User, Home, ShoppingCart, LogOut, X, DollarSign /*, Edit */ } from 'lucide-react';
 import api from '../api.js';
 
 /**
@@ -21,6 +21,19 @@ function ReservationsView() {
   const [isPagoModalOpen, setIsPagoModalOpen] = useState(false);
   const [selectedReservaForPago, setSelectedReservaForPago] = useState(null);
   const [pagoForm, setPagoForm] = useState({ tipo: 'seña', monto: '' });
+
+  // Estados para modal de edición (DESACTIVADO)
+  // const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  // const [selectedReservaForEdit, setSelectedReservaForEdit] = useState(null);
+  // const [habitacionesDisponibles, setHabitacionesDisponibles] = useState([]);
+  // const [editForm, setEditForm] = useState({
+  //   fecha_entrada: '',
+  //   fecha_salida: '',
+  //   habitacion_id: '',
+  //   precio_total: '',
+  //   estado: ''
+  // });
+  // const [editLoading, setEditLoading] = useState(false);
 
   // Cargar reservas al montar
   useEffect(() => {
@@ -70,6 +83,78 @@ function ReservationsView() {
       alert(`❌ Error: ${err.response?.data?.detail || 'No se pudo cancelar la reserva'}`);
     }
   };
+
+  // --- EDICION (DESACTIVADO) ---
+  // const handleEdit = async (reservation) => {
+  //   setSelectedReservaForEdit(reservation);
+  //   setEditForm({
+  //     fecha_entrada: reservation.fecha_entrada || '',
+  //     fecha_salida: reservation.fecha_salida || '',
+  //     habitacion_id: reservation.habitacion_id || '',
+  //     precio_total: reservation.precio_total || '',
+  //     estado: reservation.estado || ''
+  //   });
+  //   
+  //   // Cargar habitaciones para el selector
+  //   try {
+  //     const response = await api.get('/habitaciones');
+  //     setHabitacionesDisponibles(response.data || []);
+  //   } catch (err) {
+  //     console.error('Error al cargar habitaciones:', err);
+  //   }
+  //   
+  //   setIsEditModalOpen(true);
+  // };
+
+  // const handleSaveEdit = async (e) => {
+  //   e.preventDefault();
+  //   
+  //   if (!selectedReservaForEdit) return;
+  //   
+  //   // Validar fechas
+  //   if (new Date(editForm.fecha_salida) <= new Date(editForm.fecha_entrada)) {
+  //     alert('❌ La fecha de salida debe ser posterior a la fecha de entrada');
+  //     return;
+  //   }
+  //   
+  //   try {
+  //     setEditLoading(true);
+  //     
+  //     const datosActualizar = {
+  //       fecha_entrada: editForm.fecha_entrada,
+  //       fecha_salida: editForm.fecha_salida,
+  //       habitacion_id: parseInt(editForm.habitacion_id),
+  //       precio_total: parseFloat(editForm.precio_total),
+  //       estado: editForm.estado
+  //     };
+  //     
+  //     await api.put(`/reservas/${selectedReservaForEdit.id}`, datosActualizar);
+  //     
+  //     alert('✅ Reserva actualizada correctamente');
+  //     setIsEditModalOpen(false);
+  //     loadReservations();
+  //   } catch (err) {
+  //     alert('❌ Error al actualizar: ' + (err.response?.data?.detail || err.message));
+  //   } finally {
+  //     setEditLoading(false);
+  //   }
+  // };
+
+  // const calcularPrecioSugerido = () => {
+  //   if (!editForm.fecha_entrada || !editForm.fecha_salida || !editForm.habitacion_id) return;
+  //   
+  //   const habitacion = habitacionesDisponibles.find(h => h.id === parseInt(editForm.habitacion_id));
+  //   if (!habitacion) return;
+  //   
+  //   const entrada = new Date(editForm.fecha_entrada);
+  //   const salida = new Date(editForm.fecha_salida);
+  //   const noches = Math.ceil((salida - entrada) / (1000 * 60 * 60 * 24));
+  //   
+  //   if (noches > 0) {
+  //     const precioSugerido = habitacion.precio_base * noches;
+  //     setEditForm(prev => ({ ...prev, precio_total: precioSugerido.toString() }));
+  //   }
+  // };
 
   // --- CHECKOUT ---
   const handleCheckout = async (reservation) => {
@@ -266,7 +351,7 @@ function ReservationsView() {
     
     // Si no hay ningún pago registrado
     if (totalPagado === 0) {
-      return { estado: 'sin_pago', texto: 'Sin pago', badge: 'bg-gray-100 text-gray-600' };
+      return { estado: 'sin_pago', texto: 'No pagó', badge: 'bg-gray-100 text-gray-600' };
     }
     
     // Si el saldo es 0 o menor = Pagado
@@ -362,6 +447,7 @@ function ReservationsView() {
           <table className="w-full">
             <thead className="bg-gray-100 border-b border-gray-200">
               <tr>
+                {/* <th className="px-2 py-3 text-center text-sm font-semibold text-gray-900 w-16">Editar</th> */}
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">ID</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">
                   <div className="flex items-center gap-1">
@@ -410,6 +496,15 @@ function ReservationsView() {
                   key={reservation.id}
                   className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
                 >
+                  {/* <td className="px-2 py-4 text-center">
+                    <button
+                      onClick={() => handleEdit(reservation)}
+                      className="inline-flex items-center justify-center p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition"
+                      title="Editar reserva"
+                    >
+                      <Edit size={16} />
+                    </button>
+                  </td> */}
                   <td className="px-4 py-4 text-sm text-gray-700">#{reservation.id}</td>
                   <td className="px-4 py-4 text-sm font-medium text-gray-900">
                     🛏️ {reservation.habitacion?.numero || reservation.habitacion_id}
@@ -627,6 +722,126 @@ function ReservationsView() {
           </div>
         </div>
       )}
+
+      {/* --- MODAL DE EDICIÓN (DESACTIVADO) ---
+      {isEditModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-lg shadow-xl">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold flex items-center gap-2">
+                <Edit className="text-blue-600" size={24} />
+                Editar Reserva #{selectedReservaForEdit?.id}
+              </h3>
+              <button onClick={() => setIsEditModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+                <X size={20} />
+              </button>
+            </div>
+            
+            <p className="mb-4 text-sm text-gray-600">
+              Cliente: <span className="font-semibold">{selectedReservaForEdit?.cliente?.nombre_completo || 'N/A'}</span>
+            </p>
+            
+            <form onSubmit={handleSaveEdit}>
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Fecha Entrada</label>
+                  <input 
+                    type="date"
+                    className="w-full border p-2 rounded"
+                    value={editForm.fecha_entrada}
+                    onChange={(e) => setEditForm({...editForm, fecha_entrada: e.target.value})}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Fecha Salida</label>
+                  <input 
+                    type="date"
+                    className="w-full border p-2 rounded"
+                    value={editForm.fecha_salida}
+                    onChange={(e) => setEditForm({...editForm, fecha_salida: e.target.value})}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-1">Habitación</label>
+                <select 
+                  className="w-full border p-2 rounded"
+                  value={editForm.habitacion_id}
+                  onChange={(e) => setEditForm({...editForm, habitacion_id: e.target.value})}
+                  required
+                >
+                  <option value="">Seleccionar habitación...</option>
+                  {habitacionesDisponibles.map(hab => (
+                    <option key={hab.id} value={hab.id}>
+                      #{hab.numero} - {hab.tipo} (${hab.precio_base?.toLocaleString()}/noche)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-1">Precio Total ($)</label>
+                <div className="flex gap-2">
+                  <input 
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="flex-1 border p-2 rounded"
+                    value={editForm.precio_total}
+                    onChange={(e) => setEditForm({...editForm, precio_total: e.target.value})}
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={calcularPrecioSugerido}
+                    className="px-3 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 text-sm"
+                    title="Recalcular según habitación y noches"
+                  >
+                    Recalcular
+                  </button>
+                </div>
+              </div>
+
+              <div className="mb-6">
+                <label className="block text-sm font-medium mb-1">Estado</label>
+                <select 
+                  className="w-full border p-2 rounded"
+                  value={editForm.estado}
+                  onChange={(e) => setEditForm({...editForm, estado: e.target.value})}
+                  required
+                >
+                  <option value="PENDIENTE">⏳ Pendiente</option>
+                  <option value="CHECKIN">🏠 Check-in (Activa)</option>
+                  <option value="FINALIZADA">✓ Finalizada</option>
+                  <option value="CANCELADA">✗ Cancelada</option>
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <button 
+                  type="button" 
+                  onClick={() => setIsEditModalOpen(false)}
+                  className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={editLoading}
+                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-2 disabled:opacity-50"
+                >
+                  <Edit size={16} />
+                  {editLoading ? 'Guardando...' : 'Guardar Cambios'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      */}
     </div>
   );
 }

@@ -96,8 +96,9 @@ function CheckinView() {
     setPaso(2);
     setMostrarCambioHabitacion(false);
     
-    // Verificar estado de habitación
-    if (reserva.habitacion_estado !== 'DISPONIBLE') {
+    // Verificar estado de habitación - usar el nuevo campo puede_checkin
+    if (reserva.puede_checkin === false || 
+        (reserva.habitacion_estado !== 'DISPONIBLE' && reserva.habitacion_estado !== 'OCUPADA')) {
       cargarHabitacionesDisponibles();
     }
   };
@@ -137,8 +138,13 @@ function CheckinView() {
   const realizarCheckin = async () => {
     if (!selectedReserva) return;
     
-    // Solo bloquear si la habitación está en MANTENIMIENTO o LIMPIEZA
-    // OCUPADA se permite porque el backend verifica si hay otra reserva activa real
+    // Verificar si puede hacer check-in usando el nuevo campo del backend
+    if (selectedReserva.puede_checkin === false) {
+      alert(`⚠️ No se puede hacer check-in: ${selectedReserva.motivo_bloqueo || 'La habitación no está disponible'}`);
+      return;
+    }
+    
+    // Fallback: verificar manualmente MANTENIMIENTO o LIMPIEZA
     if (selectedReserva.habitacion_estado === 'MANTENIMIENTO' || selectedReserva.habitacion_estado === 'LIMPIEZA') {
       alert(`⚠️ La habitación está en ${selectedReserva.habitacion_estado}. Por favor, asigna otra habitación o espera a que esté lista.`);
       return;
