@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { AlertCircle, Trash2, Calendar, User, Home, ShoppingCart, LogOut, X } from 'lucide-react';
+import { AlertCircle, Trash2, Calendar, User, Home, ShoppingCart, LogOut, X, DollarSign } from 'lucide-react';
 import api from '../api.js';
 
 /**
@@ -16,6 +16,11 @@ function ReservationsView() {
   const [selectedReserva, setSelectedReserva] = useState(null);
   const [productos, setProductos] = useState([]);
   const [consumoForm, setConsumoForm] = useState({ producto_id: '', cantidad: 1 });
+
+  // Estados para modal de pago
+  const [isPagoModalOpen, setIsPagoModalOpen] = useState(false);
+  const [selectedReservaForPago, setSelectedReservaForPago] = useState(null);
+  const [pagoForm, setPagoForm] = useState({ tipo: 'seña', monto: '' });
 
   // Cargar reservas al montar
   useEffect(() => {
@@ -125,6 +130,63 @@ function ReservationsView() {
     return estado === 'CHECKIN' || estado === 'PENDIENTE' || estado === 'CONFIRMADA';
   };
 
+  // --- PAGO ---
+  const handleOpenPagoModal = (reservation) => {
+    setSelectedReservaForPago(reservation);
+    setPagoForm({ tipo: 'seña', monto: '' });
+    setIsPagoModalOpen(true);
+  };
+
+  const handleRegistrarPago = async (e) => {
+    e.preventDefault();
+    
+    if (!pagoForm.monto || parseFloat(pagoForm.monto) <= 0) {
+      alert('Ingresa un monto válido mayor a 0');
+      return;
+    }
+
+    try {
+      // Crear producto temporal para el pago (precio negativo = abono)
+      const nombrePago = pagoForm.tipo === 'seña' ? 'Seña/Adelanto' : 'Pago Completo';
+      const montoPago = parseFloat(pagoForm.monto);
+      
+      // Buscar si existe un producto con ese nombre, si no crearlo
+      let productoId = null;
+      const productosResponse = await api.get('/productos');
+      const productoExistente = productosResponse.data.find(p => p.nombre === nombrePago);
+      
+      if (productoExistente) {
+        // Actualizar precio del producto existente
+        await api.put(`/productos/${productoExistente.id}`, {
+          nombre: nombrePago,
+          precio: -montoPago,
+          activo: true
+        });
+        productoId = productoExistente.id;
+      } else {
+        // Crear nuevo producto con precio negativo
+        const nuevoProducto = await api.post('/productos', {
+          nombre: nombrePago,
+          precio: -montoPago,
+          activo: true
+        });
+        productoId = nuevoProducto.data.id;
+      }
+      
+      // Agregar consumo (que será un descuento por ser negativo)
+      await api.post(`/reservas/${selectedReservaForPago.id}/consumos`, {
+        producto_id: productoId,
+        cantidad: 1
+      });
+      
+      alert(`✅ ${nombrePago} de $${montoPago.toFixed(2)} registrado correctamente`);
+      setIsPagoModalOpen(false);
+      loadReservations();
+    } catch (err) {
+      alert('❌ Error: ' + (err.response?.data?.detail || 'No se pudo registrar el pago'));
+    }
+  };
+
   const formatDate = (dateString) => {
     if (!dateString) return '';
     // Agregar T00:00:00 para evitar problemas de zona horaria
@@ -179,6 +241,48 @@ function ReservationsView() {
       'CANCELADA': '✗ Cancelada',
     };
     return textos[estadoVisual] || estadoVisual;
+  };
+
+  // Determinar estado de pago basado en consumos
+  const getEstadoPago = (reservation) => {
+    const precioReserva = reservation.precio_total || 0;
+    const consumos = reservation.consumos || [];
+    
+    // Calcular consumos positivos (productos, minibar, etc.)
+    const totalConsumosPositivos = consumos
+      .filter(c => c.precio_unitario > 0)
+      .reduce((sum, c) => sum + (c.precio_unitario * c.cantidad), 0);
+    
+    // Calcular pagos (consumos negativos)
+    const totalPagado = consumos
+      .filter(c => c.precio_unitario < 0)
+      .reduce((sum, c) => sum + Math.abs(c.precio_unitario * c.cantidad), 0);
+    
+    // Total a pagar = precio reserva + consumos extras
+    const totalAPagar = precioReserva + totalConsumosPositivos;
+    
+    // Saldo pendiente
+    const saldo = totalAPagar - totalPagado;
+    
+    // Si no hay ningún pago registrado
+    if (totalPagado === 0) {
+      return { estado: 'sin_pago', texto: 'Sin pago', badge: 'bg-gray-100 text-gray-600' };
+    }
+    
+    // Si el saldo es 0 o menor = Pagado
+    if (saldo <= 0) {
+      return { estado: 'pagado', texto: '✅ Pagado', badge: 'bg-green-100 text-green-700' };
+    }
+    
+    // Tiene pagos pero hay saldo pendiente
+    const estadoReserva = reservation.estado?.toUpperCase();
+    const esActiva = estadoReserva === 'CHECKIN' || estadoReserva === 'PENDIENTE' || estadoReserva === 'CONFIRMADA';
+    
+    if (esActiva) {
+      return { estado: 'senado', texto: `💰 Señado (Debe: $${saldo.toFixed(0)})`, badge: 'bg-yellow-100 text-yellow-700' };
+    } else {
+      return { estado: 'senado', texto: '💰 Señado', badge: 'bg-yellow-100 text-yellow-700' };
+    }
   };
 
   // Ordenar reservas: CHECK-IN HOY primero, luego ACTIVAS, luego PENDIENTES
@@ -271,7 +375,7 @@ function ReservationsView() {
                     Cliente
                   </div>
                 </th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">
+                <th className="px-2 py-3 text-left text-sm font-semibold text-gray-900 w-28">
                   📧 Email
                 </th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">
@@ -290,6 +394,12 @@ function ReservationsView() {
                   </div>
                 </th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Estado</th>
+                <th className="px-4 py-3 text-center text-sm font-semibold text-gray-900">
+                  <div className="flex items-center justify-center gap-1">
+                    <DollarSign size={14} />
+                    Pago
+                  </div>
+                </th>
                 <th className="px-4 py-3 text-right text-sm font-semibold text-gray-900">Total</th>
                 <th className="px-4 py-3 text-center text-sm font-semibold text-gray-900">Acciones</th>
               </tr>
@@ -307,7 +417,7 @@ function ReservationsView() {
                   <td className="px-4 py-4 text-sm text-gray-700">
                     {reservation.cliente?.nombre_completo || `Cliente #${reservation.cliente_id}`}
                   </td>
-                  <td className="px-4 py-4 text-sm text-gray-500">
+                  <td className="px-2 py-4 text-sm text-gray-500 max-w-28 truncate" title={reservation.cliente?.email || ''}>
                     {reservation.cliente?.email || '-'}
                   </td>
                   <td className="px-4 py-4 text-sm text-gray-500">
@@ -324,6 +434,11 @@ function ReservationsView() {
                       {getStatusText(getEstadoVisual(reservation))}
                     </span>
                   </td>
+                  <td className="px-4 py-4 text-center">
+                    <span className={`px-2 py-1 text-xs font-semibold rounded ${getEstadoPago(reservation).badge}`}>
+                      {getEstadoPago(reservation).texto}
+                    </span>
+                  </td>
                   <td className="px-4 py-4 text-sm font-semibold text-green-600 text-right">
                     ${reservation.precio_total?.toFixed(2) || '0.00'}
                   </td>
@@ -338,6 +453,14 @@ function ReservationsView() {
                           >
                             <ShoppingCart size={14} />
                             Consumo
+                          </button>
+                          <button
+                            onClick={() => handleOpenPagoModal(reservation)}
+                            className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200 transition text-xs font-medium"
+                            title="Registrar pago"
+                          >
+                            <DollarSign size={14} />
+                            Pago
                           </button>
                           <button
                             onClick={() => handleCheckout(reservation)}
@@ -418,6 +541,86 @@ function ReservationsView() {
                   className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
                 >
                   Guardar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL DE PAGO --- */}
+      {isPagoModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-6 w-96 shadow-xl">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold flex items-center gap-2">
+                <DollarSign className="text-green-600" size={24} />
+                Registrar Pago
+              </h3>
+              <button onClick={() => setIsPagoModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+                <X size={20} />
+              </button>
+            </div>
+            <p className="mb-4 text-sm text-gray-600">
+              Reserva #{selectedReservaForPago?.id} - {selectedReservaForPago?.cliente?.nombre_completo || 'Cliente'}
+            </p>
+            <p className="mb-4 text-sm text-gray-500">
+              Total reserva: <span className="font-semibold text-gray-700">${selectedReservaForPago?.precio_total?.toFixed(2) || '0.00'}</span>
+            </p>
+            
+            <form onSubmit={handleRegistrarPago}>
+              <label className="block text-sm font-medium mb-2">Tipo de Pago</label>
+              <div className="flex gap-4 mb-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="tipoPago"
+                    value="seña"
+                    checked={pagoForm.tipo === 'seña'}
+                    onChange={(e) => setPagoForm({...pagoForm, tipo: e.target.value})}
+                    className="w-4 h-4 text-green-600"
+                  />
+                  <span className="text-sm">Seña / Adelanto</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="tipoPago"
+                    value="completo"
+                    checked={pagoForm.tipo === 'completo'}
+                    onChange={(e) => setPagoForm({...pagoForm, tipo: e.target.value})}
+                    className="w-4 h-4 text-green-600"
+                  />
+                  <span className="text-sm">Pago Completo</span>
+                </label>
+              </div>
+
+              <label className="block text-sm font-medium mb-1">Monto ($)</label>
+              <input 
+                type="number" 
+                min="0.01"
+                step="0.01"
+                className="w-full border p-2 rounded mb-6"
+                placeholder="Ej: 50000"
+                value={pagoForm.monto}
+                onChange={(e) => setPagoForm({...pagoForm, monto: e.target.value})}
+                required
+              />
+
+              <div className="flex justify-end gap-2">
+                <button 
+                  type="button" 
+                  onClick={() => setIsPagoModalOpen(false)}
+                  className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="submit" 
+                  className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 flex items-center gap-2"
+                >
+                  <DollarSign size={16} />
+                  Registrar Pago
                 </button>
               </div>
             </form>

@@ -110,6 +110,15 @@ class HabitacionEmbedded(BaseModel):
     tipo: str
     precio_base: float
 
+# Schema embebido para consumo en respuesta de reserva
+class ConsumoEmbedded(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    producto_id: int
+    cantidad: int
+    precio_unitario: float
+    producto_nombre: Optional[str] = None
+
 class ReservaResponse(ReservaBase):
     model_config = ConfigDict(from_attributes=True)
     id: int
@@ -117,6 +126,7 @@ class ReservaResponse(ReservaBase):
     estado: str = Field(..., description="Estado de la reserva")
     cliente: Optional[ClienteEmbedded] = None
     habitacion: Optional[HabitacionEmbedded] = None
+    consumos: Optional[List[ConsumoEmbedded]] = None
 
 # Respuesta extendida con datos de cliente y habitación para historial
 class ReservaHistorialResponse(BaseModel):

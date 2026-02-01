@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { AlertCircle, Calendar, Pencil, ChevronDown, ShoppingCart, FileText, X, Printer, Plus, Minus, Package } from 'lucide-react';
+import { AlertCircle, Calendar, Pencil, ChevronDown, ShoppingCart, FileText, X, Printer, Plus, Minus, Package, DollarSign } from 'lucide-react';
 import api from '../api.js';
 import BookingModal from './BookingModal';
 
@@ -11,7 +11,16 @@ import BookingModal from './BookingModal';
  * Ahora incluye funcionalidad de ver y agregar consumos para habitaciones ocupadas
  */
 function CalendarView() {
-  const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
+  // Obtener fecha local correctamente (evita problema de zona horaria con toISOString)
+  const getLocalDateString = () => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+  
+  const [fecha, setFecha] = useState(getLocalDateString());
   const [habitaciones, setHabitaciones] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -28,10 +37,22 @@ function CalendarView() {
   const [extraItems, setExtraItems] = useState([]);
   const [newItemForm, setNewItemForm] = useState({ concepto: '', cantidad: 1, precio: '' });
 
-  // Cargar disponibilidad cuando cambia la fecha
+  // Estados para modal de pago
+  const [isPagoModalOpen, setIsPagoModalOpen] = useState(false);
+  const [selectedRoomForPago, setSelectedRoomForPago] = useState(null);
+  const [pagoForm, setPagoForm] = useState({ tipo: 'seña', monto: '' });
+
+  // Cargar disponibilidad al montar el componente y cuando cambia la fecha
   useEffect(() => {
+    console.log('[CalendarView] Componente montado o fecha cambió, recargando...');
     loadDisponibilidad();
   }, [fecha]);
+  
+  // Recargar al montar el componente (por si cambia de pestaña)
+  useEffect(() => {
+    console.log('[CalendarView] Componente montado, forzando recarga inicial');
+    loadDisponibilidad();
+  }, []);
 
   const loadDisponibilidad = async () => {
     try {
@@ -144,6 +165,69 @@ function CalendarView() {
 
   const handlePrint = () => {
     window.print();
+  };
+
+  // Abrir modal de pago
+  const handleOpenPagoModal = (habitacion) => {
+    setSelectedRoomForPago(habitacion);
+    setPagoForm({ tipo: 'seña', monto: '' });
+    setIsPagoModalOpen(true);
+  };
+
+  // Registrar pago como consumo negativo
+  const handleRegistrarPago = async (e) => {
+    e.preventDefault();
+    if (!selectedRoomForPago?.reserva_actual_id || !pagoForm.monto) {
+      alert('Por favor ingresa un monto válido');
+      return;
+    }
+
+    const monto = parseFloat(pagoForm.monto);
+    if (isNaN(monto) || monto <= 0) {
+      alert('El monto debe ser un número mayor a 0');
+      return;
+    }
+
+    // Buscar o crear producto de pago
+    const concepto = pagoForm.tipo === 'seña' ? 'Seña/Adelanto' : 'Pago Completo';
+    
+    try {
+      // Primero verificamos si existe el producto de pago
+      let productoId = null;
+      const productosResponse = await api.get('/productos');
+      const productoExistente = productosResponse.data.find(p => p.nombre === concepto);
+      
+      if (productoExistente) {
+        productoId = productoExistente.id;
+        // Actualizar el precio del producto existente para que coincida con el monto negativo
+        await api.put(`/productos/${productoId}`, {
+          nombre: concepto,
+          precio: -monto,
+          activo: true
+        });
+      } else {
+        // Crear el producto de pago con precio negativo
+        const nuevoProducto = await api.post('/productos', {
+          nombre: concepto,
+          precio: -monto,
+          activo: true
+        });
+        productoId = nuevoProducto.data.id;
+      }
+
+      // Registrar el consumo (con el precio negativo del producto)
+      await api.post(`/reservas/${selectedRoomForPago.reserva_actual_id}/consumos`, {
+        producto_id: productoId,
+        cantidad: 1
+      });
+
+      alert(`✅ ${concepto} de $${monto.toFixed(2)} registrado correctamente`);
+      setIsPagoModalOpen(false);
+      loadDisponibilidad();
+    } catch (err) {
+      console.error('Error al registrar pago:', err);
+      alert('❌ Error al registrar el pago: ' + (err.response?.data?.detail || err.message));
+    }
   };
 
   // Formatear fecha para mostrar
@@ -396,22 +480,33 @@ function CalendarView() {
 
                   {/* Botones de Consumos - Solo para habitaciones OCUPADAS */}
                   {hasActiveBooking && habitacion.reserva_actual_id && (
-                    <div className="mt-3 grid grid-cols-2 gap-2">
+                    <div className="mt-3 space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => handleAddConsumos(habitacion)}
+                          className="flex items-center justify-center gap-1 px-2 py-2 bg-purple-600 text-white rounded text-xs font-medium hover:bg-purple-700 transition"
+                          title="Agregar consumo"
+                        >
+                          <ShoppingCart size={14} />
+                          <span>+ Consumo</span>
+                        </button>
+                        <button
+                          onClick={() => handleViewConsumos(habitacion)}
+                          className="flex items-center justify-center gap-1 px-2 py-2 bg-amber-600 text-white rounded text-xs font-medium hover:bg-amber-700 transition"
+                          title="Ver cuenta"
+                        >
+                          <FileText size={14} />
+                          <span>Ver Cuenta</span>
+                        </button>
+                      </div>
+                      {/* Botón de Pagar */}
                       <button
-                        onClick={() => handleAddConsumos(habitacion)}
-                        className="flex items-center justify-center gap-1 px-2 py-2 bg-purple-600 text-white rounded text-xs font-medium hover:bg-purple-700 transition"
-                        title="Agregar consumo"
+                        onClick={() => handleOpenPagoModal(habitacion)}
+                        className="w-full flex items-center justify-center gap-1 px-2 py-2 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700 transition"
+                        title="Registrar pago"
                       >
-                        <ShoppingCart size={14} />
-                        <span>+ Consumo</span>
-                      </button>
-                      <button
-                        onClick={() => handleViewConsumos(habitacion)}
-                        className="flex items-center justify-center gap-1 px-2 py-2 bg-amber-600 text-white rounded text-xs font-medium hover:bg-amber-700 transition"
-                        title="Ver cuenta"
-                      >
-                        <FileText size={14} />
-                        <span>Ver Cuenta</span>
+                        <DollarSign size={14} />
+                        <span>💰 Registrar Pago</span>
                       </button>
                     </div>
                   )}
@@ -529,6 +624,103 @@ function CalendarView() {
                 Ver Cuenta
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Pago */}
+      {isPagoModalOpen && selectedRoomForPago && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-2xl w-full max-w-md">
+            <div className="flex items-center justify-between p-4 border-b bg-green-50">
+              <div>
+                <h2 className="text-lg font-bold text-green-800">
+                  💰 Registrar Pago
+                </h2>
+                <p className="text-sm text-green-600">
+                  Habitación {selectedRoomForPago.numero} • {selectedRoomForPago.nombre_cliente}
+                </p>
+              </div>
+              <button
+                onClick={() => setIsPagoModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X size={24} />
+              </button>
+            </div>
+
+            <form onSubmit={handleRegistrarPago} className="p-4">
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Tipo de Pago
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setPagoForm({...pagoForm, tipo: 'seña'})}
+                    className={`p-3 border-2 rounded-lg text-center transition ${
+                      pagoForm.tipo === 'seña'
+                        ? 'border-green-500 bg-green-50 text-green-700'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <span className="text-2xl block mb-1">💵</span>
+                    <span className="font-medium">Seña/Adelanto</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPagoForm({...pagoForm, tipo: 'completo'})}
+                    className={`p-3 border-2 rounded-lg text-center transition ${
+                      pagoForm.tipo === 'completo'
+                        ? 'border-green-500 bg-green-50 text-green-700'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <span className="text-2xl block mb-1">✅</span>
+                    <span className="font-medium">Pago Completo</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Monto a Registrar
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-lg">$</span>
+                  <input
+                    type="number"
+                    value={pagoForm.monto}
+                    onChange={(e) => setPagoForm({...pagoForm, monto: e.target.value})}
+                    className="w-full pl-8 pr-4 py-3 border-2 border-gray-300 rounded-lg text-xl font-bold focus:border-green-500 focus:ring-2 focus:ring-green-200"
+                    placeholder="0.00"
+                    step="0.01"
+                    min="0.01"
+                    required
+                  />
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  Este monto se descontará del total de la cuenta
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t">
+                <button
+                  type="button"
+                  onClick={() => setIsPagoModalOpen(false)}
+                  className="px-4 py-2 text-gray-600 hover:text-gray-800"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="flex items-center gap-2 px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"
+                >
+                  <DollarSign size={16} />
+                  Registrar Pago
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

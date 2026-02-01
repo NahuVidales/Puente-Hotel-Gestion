@@ -307,17 +307,46 @@ def listar_reservas(
     GET /reservas
     Lista todas las reservas, opcionalmente filtrando por rango de fechas o cliente.
     Antes de listar, actualiza automáticamente las reservas vencidas.
+    Incluye consumos con nombre del producto para determinar estado de pago.
     """
     # Actualizar reservas vencidas automáticamente
     crud.actualizar_reservas_vencidas(db)
     
-    return crud.get_reservas(
+    reservas = crud.get_reservas(
         db,
         fecha_inicio=fecha_inicio,
         fecha_fin=fecha_fin,
         cliente_id=cliente_id,
         habitacion_id=habitacion_id
     )
+    
+    # Enriquecer consumos con nombre del producto
+    resultado = []
+    for reserva in reservas:
+        reserva_dict = {
+            "id": reserva.id,
+            "habitacion_id": reserva.habitacion_id,
+            "cliente_id": reserva.cliente_id,
+            "fecha_entrada": reserva.fecha_entrada,
+            "fecha_salida": reserva.fecha_salida,
+            "precio_total": reserva.precio_total,
+            "estado": reserva.estado.value if hasattr(reserva.estado, 'value') else str(reserva.estado),
+            "cliente": reserva.cliente,
+            "habitacion": reserva.habitacion,
+            "consumos": [
+                {
+                    "id": c.id,
+                    "producto_id": c.producto_id,
+                    "cantidad": c.cantidad,
+                    "precio_unitario": c.precio_unitario,
+                    "producto_nombre": c.producto.nombre if c.producto else None
+                }
+                for c in reserva.consumos
+            ] if reserva.consumos else []
+        }
+        resultado.append(reserva_dict)
+    
+    return resultado
 
 @app.get("/reservas/historial", response_model=List[schemas.ReservaHistorialResponse])
 def obtener_historial(db: Session = Depends(get_db)):
@@ -419,6 +448,9 @@ def get_disponibilidad_por_fecha(
         Lista de habitaciones con estado_en_fecha ('DISPONIBLE' u 'OCUPADA')
     """
     try:
+        # Actualizar reservas vencidas automáticamente (sincronizar con otras vistas)
+        crud.actualizar_reservas_vencidas(db)
+        
         # Convertir string a date
         from datetime import datetime
         fecha_obj = datetime.strptime(fecha, "%Y-%m-%d").date()

@@ -90,12 +90,16 @@ def get_habitaciones(db: Session) -> list[dict]:
         ).order_by(Reserva.fecha_entrada.asc()).all()
         
         # Construir diccionario base
+        # Convertir enums a strings para la respuesta JSON
+        tipo_str = habitacion.tipo.value if hasattr(habitacion.tipo, 'value') else str(habitacion.tipo)
+        estado_str = habitacion.estado.value if hasattr(habitacion.estado, 'value') else str(habitacion.estado)
+        
         hab_dict = {
             "id": habitacion.id,
             "numero": habitacion.numero,
-            "tipo": habitacion.tipo,
+            "tipo": tipo_str,
             "precio_base": habitacion.precio_base,
-            "estado": habitacion.estado,  # Esto es el valor crudo de BD
+            "estado": estado_str,  # Valor inicial, puede ser sobrescrito
             "reserva_actual_id": None,
             "reserva_actual_inicio": None,
             "reserva_actual_fin": None,
@@ -107,10 +111,13 @@ def get_habitaciones(db: Session) -> list[dict]:
         # LÓGICA DE ESTADO VISUAL (Calculado, NO del campo BD)
         # ===============================================================
         
+        # Obtener el valor del estado como string para comparación
+        estado_actual = habitacion.estado.value if hasattr(habitacion.estado, 'value') else str(habitacion.estado)
+        
         # PASO 1: Respetar estados manuales de mantenimiento/limpieza
-        if habitacion.estado in ['MANTENIMIENTO', 'LIMPIEZA']:
+        if estado_actual in ['MANTENIMIENTO', 'LIMPIEZA']:
             # Respetar la decisión manual del staff
-            print(f"[DEBUG] Habitación {habitacion.numero}: {habitacion.estado} (manual del staff)")
+            print(f"[DEBUG] Habitación {habitacion.numero}: {estado_actual} (manual del staff)")
         # PASO 2: Si hay reserva en CHECKIN hoy, la habitación está OCUPADA
         elif reserva_checkin:
             hab_dict["estado"] = 'OCUPADA'  # ← Huésped ya llegó
@@ -721,12 +728,16 @@ def get_habitaciones_por_fecha(db: Session, fecha_objetivo: date):
         ).order_by(Reserva.fecha_entrada.asc()).all()
         
         # Construir diccionario base
+        # Convertir enums a strings para la respuesta JSON
+        tipo_str = habitacion.tipo.value if hasattr(habitacion.tipo, 'value') else str(habitacion.tipo)
+        estado_str = habitacion.estado.value if hasattr(habitacion.estado, 'value') else str(habitacion.estado)
+        
         hab_dict = {
             "id": habitacion.id,
             "numero": habitacion.numero,
-            "tipo": habitacion.tipo,
+            "tipo": tipo_str,
             "precio_base": habitacion.precio_base,
-            "estado": habitacion.estado,  # Valor crudo de BD
+            "estado": estado_str,  # Valor inicial, puede ser sobrescrito
             "reserva_actual_id": None,
             "reserva_actual_inicio": None,
             "reserva_actual_fin": None,
@@ -738,10 +749,13 @@ def get_habitaciones_por_fecha(db: Session, fecha_objetivo: date):
         # LÓGICA DE ESTADO VISUAL (Calculado, NO del campo BD)
         # ===============================================================
         
+        # Obtener el valor del estado como string para comparación
+        estado_actual = habitacion.estado.value if hasattr(habitacion.estado, 'value') else str(habitacion.estado)
+        
         # PASO 1: Respetar estados manuales de mantenimiento
-        if habitacion.estado in ['MANTENIMIENTO', 'LIMPIEZA']:
+        if estado_actual in ['MANTENIMIENTO', 'LIMPIEZA']:
             # Respetar la decisión manual del staff
-            print(f"[DEBUG] Habitación {habitacion.numero} en {fecha_objetivo}: {habitacion.estado} (manual del staff)")
+            print(f"[DEBUG] Habitación {habitacion.numero} en {fecha_objetivo}: {estado_actual} (manual del staff)")
         # PASO 2: Si hay reserva EN fecha_objetivo, forzar estado a OCUPADA
         elif reserva_en_fecha:
             hab_dict["estado"] = 'OCUPADA'  # ← FORZADO por cálculo
