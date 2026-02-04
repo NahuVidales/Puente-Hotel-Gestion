@@ -615,11 +615,28 @@ def eliminar_producto(producto_id: int, db: Session = Depends(get_db)):
 def agregar_consumo(reserva_id: int, consumo: schemas.ConsumoCreate, db: Session = Depends(get_db)):
     """
     POST /reservas/{id}/consumos
-    Agrega un consumo a una reserva
+    Agrega un consumo a una reserva (usando producto existente)
     """
     db_consumo = crud.registrar_consumo(db, reserva_id, consumo.producto_id, consumo.cantidad)
     if not db_consumo:
         raise HTTPException(status_code=400, detail="No se pudo registrar el consumo. Verifique que la reserva y producto existan.")
+    return db_consumo
+
+@app.post("/reservas/{reserva_id}/consumos/manual", response_model=schemas.ConsumoResponse)
+def agregar_consumo_manual(reserva_id: int, consumo: schemas.ConsumoManualCreate, db: Session = Depends(get_db)):
+    """
+    POST /reservas/{id}/consumos/manual
+    Agrega un consumo manual con concepto y precio personalizado.
+    Útil para descuentos, daños, extras, etc.
+    """
+    db_consumo = crud.registrar_consumo_manual(
+        db, reserva_id, 
+        consumo.concepto, 
+        consumo.cantidad, 
+        consumo.precio
+    )
+    if not db_consumo:
+        raise HTTPException(status_code=400, detail="No se pudo registrar el consumo. Verifique que la reserva exista.")
     return db_consumo
 
 @app.get("/reservas/{reserva_id}/consumos", response_model=List[schemas.ConsumoResponse])
@@ -639,6 +656,17 @@ def eliminar_consumo(consumo_id: int, db: Session = Depends(get_db)):
     if crud.delete_consumo(db, consumo_id):
         return {"mensaje": "Consumo eliminado correctamente"}
     raise HTTPException(status_code=404, detail="Consumo no encontrado")
+
+@app.put("/consumos/{consumo_id}", response_model=schemas.ConsumoResponse)
+def actualizar_consumo(consumo_id: int, consumo: schemas.ConsumoUpdate, db: Session = Depends(get_db)):
+    """
+    PUT /consumos/{id}
+    Actualiza cantidad y/o precio de un consumo
+    """
+    db_consumo = crud.update_consumo(db, consumo_id, consumo.cantidad, consumo.precio_unitario)
+    if not db_consumo:
+        raise HTTPException(status_code=404, detail="Consumo no encontrado")
+    return db_consumo
 
 @app.get("/reservas/{reserva_id}/cuenta", response_model=schemas.CuentaResponse)
 def obtener_cuenta(reserva_id: int, db: Session = Depends(get_db)):

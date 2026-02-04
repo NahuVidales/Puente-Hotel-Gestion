@@ -172,6 +172,17 @@ class ConsumoCreate(BaseModel):
     producto_id: int = Field(..., gt=0)
     cantidad: int = Field(1, gt=0, description="Cantidad consumida")
 
+# Schema para consumo manual (sin producto existente)
+class ConsumoManualCreate(BaseModel):
+    concepto: str = Field(..., min_length=1, max_length=100, description="Descripción del ítem")
+    cantidad: int = Field(1, description="Cantidad (puede ser negativo para descuentos)")
+    precio: float = Field(..., description="Precio unitario (puede ser negativo)")
+
+# Schema para actualizar un consumo existente
+class ConsumoUpdate(BaseModel):
+    cantidad: Optional[int] = Field(None, description="Nueva cantidad")
+    precio_unitario: Optional[float] = Field(None, description="Nuevo precio unitario")
+
 class ConsumoResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int

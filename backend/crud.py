@@ -926,6 +926,43 @@ def registrar_consumo(db: Session, reserva_id: int, producto_id: int, cantidad: 
     db.refresh(db_consumo)
     return db_consumo
 
+def registrar_consumo_manual(db: Session, reserva_id: int, concepto: str, cantidad: int, precio: float):
+    """
+    Registra un consumo manual creando un producto temporal con el concepto dado.
+    Útil para agregar items personalizados como descuentos, daños, etc.
+    """
+    reserva = db.query(Reserva).filter(Reserva.id == reserva_id).first()
+    if not reserva:
+        return None
+    
+    # Crear producto temporal/genérico para este concepto
+    # Buscar si ya existe un producto con ese nombre exacto
+    producto = db.query(Producto).filter(Producto.nombre == concepto).first()
+    
+    if not producto:
+        # Crear nuevo producto
+        producto = Producto(
+            nombre=concepto,
+            precio=precio,
+            activo=True
+        )
+        db.add(producto)
+        db.commit()
+        db.refresh(producto)
+    
+    # Registrar el consumo
+    db_consumo = Consumo(
+        reserva_id=reserva_id,
+        producto_id=producto.id,
+        cantidad=cantidad,
+        precio_unitario=precio,
+        fecha_consumo=date.today()
+    )
+    db.add(db_consumo)
+    db.commit()
+    db.refresh(db_consumo)
+    return db_consumo
+
 def get_consumos_reserva(db: Session, reserva_id: int):
     return db.query(Consumo).filter(Consumo.reserva_id == reserva_id).order_by(Consumo.fecha_consumo).all()
 
@@ -936,6 +973,23 @@ def delete_consumo(db: Session, consumo_id: int):
         db.commit()
         return True
     return False
+
+def update_consumo(db: Session, consumo_id: int, cantidad: int = None, precio_unitario: float = None):
+    """
+    Actualiza cantidad y/o precio de un consumo existente.
+    """
+    db_consumo = db.query(Consumo).filter(Consumo.id == consumo_id).first()
+    if not db_consumo:
+        return None
+    
+    if cantidad is not None:
+        db_consumo.cantidad = cantidad
+    if precio_unitario is not None:
+        db_consumo.precio_unitario = precio_unitario
+    
+    db.commit()
+    db.refresh(db_consumo)
+    return db_consumo
 
 def get_cuenta_reserva(db: Session, reserva_id: int):
     reserva = db.query(Reserva).filter(Reserva.id == reserva_id).first()

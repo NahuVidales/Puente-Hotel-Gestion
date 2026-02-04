@@ -14,7 +14,6 @@ function HistoryView() {
   const [selectedReserva, setSelectedReserva] = useState(null);
   const [invoiceData, setInvoiceData] = useState(null);
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
-  const [extraItems, setExtraItems] = useState([]);
   const [newItemForm, setNewItemForm] = useState({ concepto: '', cantidad: 1, precio: '' });
 
   useEffect(() => {
@@ -41,7 +40,6 @@ function HistoryView() {
       const response = await api.get(`/reservas/${reserva.id}/cuenta`);
       setInvoiceData(response.data);
       setSelectedReserva(reserva);
-      setExtraItems([]);
       setIsInvoiceModalOpen(true);
     } catch (err) {
       console.error('Error al cargar cuenta:', err);
@@ -49,51 +47,49 @@ function HistoryView() {
     }
   };
 
-  const handleRemoveConsumo = (index) => {
-    if (!invoiceData) return;
-    const newConsumos = [...invoiceData.consumos];
-    newConsumos.splice(index, 1);
-    const newTotalConsumos = newConsumos.reduce((sum, c) => sum + c.subtotal, 0);
-    setInvoiceData({
-      ...invoiceData,
-      consumos: newConsumos,
-      total_consumos: newTotalConsumos,
-      total_general: invoiceData.total_alojamiento + newTotalConsumos + extraItems.reduce((sum, i) => sum + (i.cantidad * i.precio), 0)
-    });
-  };
-
-  const handleAddExtraItem = () => {
-    if (!newItemForm.concepto || !newItemForm.precio) return;
-    const newItem = {
-      concepto: newItemForm.concepto,
-      cantidad: parseInt(newItemForm.cantidad) || 1,
-      precio: parseFloat(newItemForm.precio) || 0
-    };
-    const newExtraItems = [...extraItems, newItem];
-    setExtraItems(newExtraItems);
-    setNewItemForm({ concepto: '', cantidad: 1, precio: '' });
+  const handleRemoveConsumo = async (consumoId, productoNombre) => {
+    if (!invoiceData || !selectedReserva) return;
     
-    // Actualizar total
-    if (invoiceData) {
-      const extraTotal = newExtraItems.reduce((sum, i) => sum + (i.cantidad * i.precio), 0);
-      setInvoiceData({
-        ...invoiceData,
-        total_general: invoiceData.total_alojamiento + invoiceData.total_consumos + extraTotal
-      });
+    // Confirmación antes de eliminar
+    const confirmar = window.confirm(`¿Estás seguro de eliminar "${productoNombre}"?`);
+    if (!confirmar) return;
+    
+    try {
+      // Eliminar de la base de datos
+      await api.delete(`/consumos/${consumoId}`);
+      
+      // Recargar la cuenta
+      const response = await api.get(`/reservas/${selectedReserva.id}/cuenta`);
+      setInvoiceData(response.data);
+    } catch (err) {
+      console.error('Error al eliminar consumo:', err);
+      alert('Error al eliminar el consumo');
     }
   };
 
-  const handleRemoveExtraItem = (index) => {
-    const newExtraItems = [...extraItems];
-    newExtraItems.splice(index, 1);
-    setExtraItems(newExtraItems);
+  const handleAddExtraItem = async () => {
+    if (!newItemForm.concepto || !newItemForm.precio) return;
+    if (!selectedReserva) return;
     
-    if (invoiceData) {
-      const extraTotal = newExtraItems.reduce((sum, i) => sum + (i.cantidad * i.precio), 0);
-      setInvoiceData({
-        ...invoiceData,
-        total_general: invoiceData.total_alojamiento + invoiceData.total_consumos + extraTotal
+    const cantidad = parseInt(newItemForm.cantidad) || 1;
+    const precio = parseFloat(newItemForm.precio) || 0;
+    
+    try {
+      // Guardar el consumo manual en la base de datos
+      await api.post(`/reservas/${selectedReserva.id}/consumos/manual`, {
+        concepto: newItemForm.concepto,
+        cantidad: cantidad,
+        precio: precio
       });
+      
+      // Recargar la cuenta para mostrar el nuevo consumo
+      const response = await api.get(`/reservas/${selectedReserva.id}/cuenta`);
+      setInvoiceData(response.data);
+      setNewItemForm({ concepto: '', cantidad: 1, precio: '' });
+      
+    } catch (err) {
+      console.error('Error al agregar item:', err);
+      alert('Error al guardar el ítem');
     }
   };
 
@@ -250,7 +246,7 @@ function HistoryView() {
           <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl max-h-[95vh] overflow-auto">
             {/* Header del modal (no se imprime) */}
             <div className="flex items-center justify-between p-4 border-b no-print">
-              <h2 className="text-lg font-semibold">Comprobante de Estancia (Duplicado)</h2>
+              <h2 className="text-lg font-semibold">Comprobante de Estancia - Reserva #{selectedReserva?.id}</h2>
               <button
                 onClick={() => setIsInvoiceModalOpen(false)}
                 className="text-gray-400 hover:text-gray-600"
@@ -259,9 +255,48 @@ function HistoryView() {
               </button>
             </div>
 
-            {/* Agregar item manual (no se imprime) - Movido arriba */}
-            <div className="p-4 bg-gray-50 border-b no-print">
-              <p className="text-sm font-medium text-gray-700 mb-2">Agregar ítem manual (Descuento, Daños, etc.)</p>
+            {/* SECCIÓN EDITABLE - Lista de consumos con eliminar (no se imprime) */}
+            <div className="p-4 bg-white border-b no-print">
+              <h3 className="text-md font-bold text-gray-800 mb-3">📋 Items de la Cuenta</h3>
+              
+              {/* Alojamiento (no editable) */}
+              <div className="flex items-center gap-2 bg-gray-100 p-3 rounded mb-2">
+                <span className="flex-1 font-medium">🛏️ Alojamiento ({invoiceData.noches} noches)</span>
+                <span className="font-bold text-green-700">${invoiceData.total_alojamiento?.toFixed(2)}</span>
+              </div>
+
+              {/* Consumos editables */}
+              {invoiceData.consumos?.length > 0 ? (
+                <div className="space-y-2 mb-4">
+                  {invoiceData.consumos.map((consumo) => (
+                    <div key={consumo.id} className="flex items-center gap-2 bg-blue-50 p-3 rounded border border-blue-200">
+                      <span className="flex-1">{consumo.producto_nombre}</span>
+                      <span className="text-gray-600">{consumo.cantidad} × ${consumo.precio_unitario?.toFixed(2)}</span>
+                      <span className="font-medium w-24 text-right">${consumo.subtotal?.toFixed(2)}</span>
+                      <button
+                        onClick={() => handleRemoveConsumo(consumo.id, consumo.producto_nombre)}
+                        className="p-2 bg-red-100 text-red-600 hover:bg-red-200 rounded-full"
+                        title="Eliminar este item"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-gray-500 text-sm mb-4">No hay consumos adicionales</p>
+              )}
+
+              {/* Total actual */}
+              <div className="flex justify-between items-center p-3 bg-green-100 rounded font-bold text-lg">
+                <span>TOTAL:</span>
+                <span className="text-green-700">${invoiceData.total_general?.toFixed(2)}</span>
+              </div>
+            </div>
+
+            {/* Agregar item manual (no se imprime) */}
+            <div className="p-4 bg-yellow-50 border-b no-print">
+              <p className="text-sm font-medium text-gray-700 mb-2">➕ Agregar ítem (Descuento, Daños, etc.)</p>
               <div className="flex gap-2">
                 <input
                   type="text"
@@ -360,13 +395,6 @@ function HistoryView() {
                           <td className="text-right">${consumo.subtotal?.toFixed(2)}</td>
                         </tr>
                       ))}
-                      {extraItems.map((item, idx) => (
-                        <tr key={`extra-${idx}`} className="border-b bg-yellow-50">
-                          <td className="py-1">✏️ {item.concepto}</td>
-                          <td className="text-center">{item.cantidad}</td>
-                          <td className="text-right">${(item.cantidad * item.precio).toFixed(2)}</td>
-                        </tr>
-                      ))}
                     </tbody>
                   </table>
 
@@ -375,7 +403,7 @@ function HistoryView() {
                     <div className="flex justify-between items-center text-sm font-bold">
                       <span>TOTAL:</span>
                       <span className="text-green-700">
-                        ${(invoiceData.total_alojamiento + invoiceData.total_consumos + extraItems.reduce((sum, i) => sum + (i.cantidad * i.precio), 0)).toFixed(2)}
+                        ${invoiceData.total_general?.toFixed(2)}
                       </span>
                     </div>
                   </div>
@@ -447,13 +475,6 @@ function HistoryView() {
                           <td className="text-right">${consumo.subtotal?.toFixed(2)}</td>
                         </tr>
                       ))}
-                      {extraItems.map((item, idx) => (
-                        <tr key={`extra-${idx}`} className="border-b bg-yellow-50">
-                          <td className="py-1">✏️ {item.concepto}</td>
-                          <td className="text-center">{item.cantidad}</td>
-                          <td className="text-right">${(item.cantidad * item.precio).toFixed(2)}</td>
-                        </tr>
-                      ))}
                     </tbody>
                   </table>
 
@@ -462,7 +483,7 @@ function HistoryView() {
                     <div className="flex justify-between items-center text-sm font-bold">
                       <span>TOTAL:</span>
                       <span className="text-green-700">
-                        ${(invoiceData.total_alojamiento + invoiceData.total_consumos + extraItems.reduce((sum, i) => sum + (i.cantidad * i.precio), 0)).toFixed(2)}
+                        ${invoiceData.total_general?.toFixed(2)}
                       </span>
                     </div>
                   </div>
